@@ -1,0 +1,85 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", sans-serif;
+  --font-heading: "DM Sans", sans-serif;
+
+  /* اللون الأساسي - البرتقالي بتاع الأزرار والأيقونات المميزة */
+  --color-main: #f0a32f;
+  /* لون النصوص التانوية (وصف، تفاصيل خفيفة) */
+  --color-secondary: #7b7b7b;
+  /* خلفية عامة للصفحة (الرمادي الفاتح اللي وراء المنتجات) */
+  --color-bg: #f3f3f3;
+  /* أبيض خالص (كروت المنتجات، الخلفية الرئيسية) */
+  --color-white: #ffffff;
+  /* لون العناوين الرئيسية (غامق جدًا، شبه أسود) */
+  --color-heading: #1a1a2e;
+  /* لون الـ Navbar (كحلي غامق زي أمازون) */
+  --color-navy: #0f1729;
+  /* لون الحدود (Border) الخفيف بين العناصر */
+  --color-border: #d6d6d5;
+  /* لون النجاح/التوفر (In Stock) */
+  --color-success: #2e7d32;
+  /* لون الخصم/التنبيه (Discount badges, Sale) */
+  --color-danger: #e63946;
+  /* لون النصوص التانوية (وصف، تفاصيل خفيفة) */
+  --color-gold: #f8d941;
+
+  --animate-shimmer: shimmer 1.5s infinite;
+
+  @keyframes shimmer {
+    0% {
+      background-position: -500px 0;
+    }
+
+    100% {
+      background-position: 500px 0;
+    }
+  }
+}
+
+body {
+  background: var(--color-white);
+  font-family: var(--font-sans);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+img {
+  width: 100%;
+}
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--color-heading);
+  font-family: var(--font-heading);
+}
+span {
+  color: var(--color-main);
+}
+
+p {
+  color: var(--color-secondary);
+}
+
+input,
+button,
+select,
+textarea {
+  outline: none;
+  border: none;
+}
+
+a {
+  text-decoration: none;
+  color: var(--color-heading);
+}
+
