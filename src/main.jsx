@@ -7,7 +7,7 @@ import CartProvider from "./conponents/context/CartContext.jsx";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <BrowserRouter basename="/">
+    <BrowserRouter basename="/go-shop/">
       <CartProvider>
         <App />
       </CartProvider>
