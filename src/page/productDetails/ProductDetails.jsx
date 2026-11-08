@@ -9,64 +9,111 @@ import PageTransition from "../../conponents/PageTransition";
 
 function ProductDetails() {
   const { id } = useParams();
-  // id دي بتجيب  useParams
-  // console.log(id);
-  // console.log اول ما ادوس علي اي منتج بيظهر التفاصيل بتاع المنتج في
+  const [productData, setProductData] = useState({
+    id: null,
+    product: null,
+    error: "",
+  });
 
-  const [product, setProduct] = useState(null);
-  // product انا اقدر استخدمها براحتي وانا هنا استخدم setProduct هنا انا بستخدم
-  // يعني مش موجوده useState(null) والقيمه انا عملتها
-  const [loading, setLoading] = useState(true);
-  // loading انا هنا بستخدم دي علشان لو الصفحه وقفت او الصفحه بتحمل يحصل اللي انا هكتبو بستخدام setLoading
-  const [relatedProducts, setRelatedProducts] = useState([]);
+  const loading = productData.id !== id;
+  // هنا بعمل check لو ال id اللي جايه من ال params مش نفس ال id اللي موجود في ال state يبقي لسه محملش المنتج الجديد
+  const product = loading ? null : productData.product;
+  const error = loading ? "" : productData.error;
+  const category = product?.category;
 
-  const [loadingRelatedProducts, setloadingRelatedProducts] = useState(true);
+  const [relatedData, setRelatedData] = useState({
+    category: null,
+    products: [],
+  });
+  const loadingRelatedProducts =
+    Boolean(product) && relatedData.category !== category;
 
   useEffect(() => {
-    // هنا بتقدر استخدم useEffect يعني اي
-    const felchProduct = async () => {
+    const controller = new AbortController();
+
+    async function fetchProduct() {
       try {
-        const res = await fetch(`https://dummyjson.com/products/${id}`);
+        const res = await fetch(`https://dummyjson.com/products/${id}`, {
+          signal: controller.signal,
+        });
+
+        if (res.status === 404) {
+          setProductData({ id, product: null, error: "" });
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error("تعذر تحميل بيانات المنتج.");
+        }
+
         const data = await res.json();
-        setProduct(data);
-        // product بتساوي علشان اقدر استخدمها براحتي واستخدم setProduct
-        setLoading(false);
-      } catch (error) {
-        // هنا علشام لو حصل خطأ
-        console.log(error);
+
+        setProductData({ id, product: data, error: "" });
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          setProductData({
+            id,
+            product: null,
+            error: "حصلت مشكلة أثناء تحميل المنتج. جرّب تاني.",
+          });
+        }
       }
-    };
-    felchProduct();
-    // function هنا علشان نشغل
-  }, [id]); // يتغير [id] هنا انا مش عاوز تحديث غير لما
+    }
+
+    fetchProduct();
+
+    return () => controller.abort();
+  }, [id]);
 
   useEffect(() => {
-    if (!product) return;
-    fetch(`https://dummyjson.com/products/category/${product.category}`)
-      .then((res) => res.json())
-      .then((data) => {
-        setRelatedProducts(data.products);
-      })
-      .catch((error) => {
-        console.log(error);
-      })
-      .finally(() => {
-        setloadingRelatedProducts(false);
-      });
-  }, [product?.category]);
+    if (!category) return;
 
-  if (!product) {
-    return <p className="w-[90%] mx-auto! max-w-337.5">Product not found</p>;
-  }
+    const controller = new AbortController();
+
+    async function fetchRelatedProducts() {
+      try {
+        const res = await fetch(
+          `https://dummyjson.com/products/category/${category}`,
+          { signal: controller.signal },
+        );
+
+        if (!res.ok) {
+          throw new Error("تعذر تحميل المنتجات المرتبطة.");
+        }
+
+        const data = await res.json();
+
+        setRelatedData({
+          category,
+          products: Array.isArray(data.products) ? data.products : [],
+        });
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          setRelatedData({ category, products: [] });
+        }
+      }
+    }
+
+    fetchRelatedProducts();
+
+    return () => controller.abort();
+  }, [category]);
+
   return (
     <PageTransition key={id}>
       <div>
         {loading ? (
           <ProductDetailsLoading />
+        ) : error ? (
+          <p className="w-[90%] mx-auto! max-w-337.5 text-red-500 py-10 text-center">
+            {error}
+          </p>
+        ) : !product ? (
+          <p className="w-[90%] mx-auto! max-w-337.5">Product not found</p>
         ) : (
           <section className="py-12.5!">
             <div className="w-[90%] mx-auto! max-w-337.5 flex flex-col lg:flex-row items-stretch justify-between gap-8 lg:gap-0">
-              {/* IMAGES  */}
+              {/* IMAGES */}
               <ProductImages product={product} />
 
               {/* PRODUCT DETAILS */}
@@ -75,15 +122,16 @@ function ProductDetails() {
           </section>
         )}
 
-        {loadingRelatedProducts ? (
-          <SlideProductLoading />
-        ) : (
-          <SlideProduct
-            key={product.category}
-            data={relatedProducts}
-            title={product.category.replace("-", " ")}
-          />
-        )}
+        {product &&
+          (loadingRelatedProducts ? (
+            <SlideProductLoading />
+          ) : (
+            <SlideProduct
+              key={category}
+              data={relatedData.products}
+              title={category.replace("-", " ")}
+            />
+          ))}
       </div>
     </PageTransition>
   );

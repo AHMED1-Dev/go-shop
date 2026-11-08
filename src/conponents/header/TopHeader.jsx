@@ -1,54 +1,3 @@
-// import { useContext } from "react";
-
-// import { Link } from "react-router-dom";
-// import { CartContext } from "../../conponents/context/CartContext";
-
-// import { FaRegHeart } from "react-icons/fa";
-// import { FaCartArrowDown } from "react-icons/fa6";
-// import SerachBox from "./SerachBox";
-
-// function TopHeader() {
-//   const { cartItems, favorites } = useContext(CartContext);
-//   return (
-//     <div className="top_header bg-navy">
-//       <div className="w-[90%] mx-auto! max-w-337.5 flex items-center justify-between py-3.75! px-0">
-//         <Link to="/" className="flex items-center">
-//           {/* <img src={Logo} alt="Go Shop" className="w-38.5 h-auto object-contain" /> */}
-//           <span className="text-main text-4xl font-bold ">Go</span>
-
-//           <span className="text-white! text-4xl font-bold">Shop</span>
-//         </Link>
-
-//         <SerachBox />
-
-//         {/* Header Icons */}
-//         <div className="header_icons flex gap-7">
-//           {/* Wishlist */}
-//           <div className="icon relative cursor-pointer">
-//             <Link to="/favorites">
-//               <FaRegHeart className="text-[30px] text-white hover:text-main transition-all duration-300" />
-//               <span className="absolute w-5 h-5 -top-2 -right-2 flex items-center justify-center rounded-full bg-main text-white! text-[11px]">
-//                 {favorites.length}
-//               </span>
-//             </Link>
-//           </div>
-//           {/* Cart */}
-//           <div className="icon relative cursor-pointer">
-//             <Link to="/cart">
-//               <FaCartArrowDown className="text-[30px] text-white hover:text-main transition-all duration-300" />
-//               <span className="absolute w-5 h-5 -top-2 -right-2 flex items-center justify-center rounded-full bg-main text-white! text-[11px]">
-//                 {cartItems.length}
-//               </span>
-//             </Link>
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-// //
-// export default TopHeader;
-
 import { useContext } from "react";
 
 import { Link } from "react-router-dom";
@@ -151,7 +100,7 @@ function TopHeader() {
                   text-[11px]
                 "
               >
-                {cartItems.length}
+                {cartItems.reduce((total, item) => total + item.quantity, 0)}
               </span>
             </Link>
           </div>

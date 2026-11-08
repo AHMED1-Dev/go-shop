@@ -20,7 +20,7 @@ function Contact() {
 
   const onSend = (data) => {
     console.log("Message (no backend yet):", data);
-    toast.success("Thanks! We received your message.");
+    toast.success("This is a demo form. Message sending is not available yet.");
     reset();
   };
 

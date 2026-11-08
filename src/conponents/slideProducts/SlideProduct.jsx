@@ -1,4 +1,3 @@
-// import React from "react";
 import Product from "./Product";
 // Import Swiper React components
 import { Swiper, SwiperSlide } from "swiper/react";
@@ -11,7 +10,7 @@ import "swiper/css/navigation";
 // import required modules
 import { Autoplay, Pagination, Navigation } from "swiper/modules";
 
-function SlideProduct({ data, title }) {
+function SlideProduct({ data = [], title, error }) {
   // Home.jsx يعني انا عاوز كل المنتجات من الملف data
   // يعني بيجيب كل اسامي المنتجات title
   // console.log(data);
@@ -23,65 +22,69 @@ function SlideProduct({ data, title }) {
             {title}
           </h2>
         </div>
-        <Swiper
-          loop={true}
-          autoplay={{
-            delay: 2500,
-            disableOnInteraction: false,
-          }}
-          pagination={{
-            type: "progressbar",
-          }}
-          navigation={true}
-          modules={[Pagination, Navigation, Autoplay]}
-          className="mySwiper"
-          breakpoints={{
-            // 📱 Mobile
-            0: {
-              slidesPerView: 2,
-              spaceBetween: 12,
-            },
+        {error ? (
+          <p className="py-6 text-center text-red-500">{error}</p>
+        ) : (
+          <Swiper
+            loop={true}
+            autoplay={{
+              delay: 2500,
+              disableOnInteraction: false,
+            }}
+            pagination={{
+              type: "progressbar",
+            }}
+            navigation={true}
+            modules={[Pagination, Navigation, Autoplay]}
+            className="mySwiper"
+            breakpoints={{
+              // 📱 Mobile
+              0: {
+                slidesPerView: 2,
+                spaceBetween: 12,
+              },
 
-            // 📱 Mobile كبير
-            480: {
-              slidesPerView: 2,
-              spaceBetween: 15,
-            },
+              // 📱 Mobile كبير
+              480: {
+                slidesPerView: 2,
+                spaceBetween: 15,
+              },
 
-            // 📱 Tablet
-            768: {
-              slidesPerView: 3,
-              spaceBetween: 20,
-            },
+              // 📱 Tablet
+              768: {
+                slidesPerView: 3,
+                spaceBetween: 20,
+              },
 
-            // 💻 Laptop
-            1024: {
-              slidesPerView: 4,
-              spaceBetween: 24,
-            },
+              // 💻 Laptop
+              1024: {
+                slidesPerView: 4,
+                spaceBetween: 24,
+              },
 
-            // 🖥️ Desktop
-            1280: {
-              slidesPerView: 5,
-              spaceBetween: 25,
-            },
+              // 🖥️ Desktop
+              1280: {
+                slidesPerView: 5,
+                spaceBetween: 25,
+              },
 
-            // 🖥️ Large Desktop
-            1536: {
-              slidesPerView: 5,
-              spaceBetween: 30,
-            },
-          }}
-        >
-          {data.map((item) => {
-            return (
-              <SwiperSlide key={item.id} className="mt-5!">
-                <Product item={item} />
-              </SwiperSlide>
-            );
-          })}
-          {/* الكود دا اللي بيكرر كل المنتجات */}
-        </Swiper>
+              // 🖥️ Large Desktop
+              1536: {
+                slidesPerView: 5,
+                spaceBetween: 30,
+              },
+            }}
+          >
+            {data.map((item) => {
+              return (
+                <SwiperSlide key={item.id} className="mt-5!">
+                  <Product item={item} />
+                </SwiperSlide>
+              );
+            })}
+            {/* الكود دا اللي بيكرر كل المنتجات */}
+          </Swiper>
+        )}
       </div>
     </div>
   );

@@ -112,12 +112,6 @@ function Product({ item }) {
           %{item.discountPercentage}
         </span>
 
-        {/* <span
-          onClick={handleAddToFav}
-          className={` top-3 right-3 text-2xl p-1.5! backdrop-blur-xs rounded-full  text-main! ${isItemInFav ? "bg-main  text-white!" : ""}`}
-        >
-          <FaRegHeart />
-        </span> */}
         <button
           type="button"
           onClick={handleAddToFav}

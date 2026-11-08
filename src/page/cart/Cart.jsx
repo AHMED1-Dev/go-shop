@@ -12,19 +12,18 @@ function Cart() {
 
   console.log(cartItems);
 
-  const totle = cartItems
+  const total = cartItems
     .reduce((acc, item) => acc + item.price * item.quantity, 0)
     .toFixed(2);
 
-    const navigate = useNavigate();
+  const navigate = useNavigate();
 
   return (
     <PageTransition>
       {/* Checkout */}
       <section className="my-12! mx-0!">
         {/* ordersummary */}
-        <div className=" w-[45%] mx-auto! py-0! px-5! border border-border shadow-xs shadow-secondary rounded-md">
-          {/* <h2 className="text-xl font-black text-slate-900">Shopping Cart</h2> */}
+        <div className=" w-[95%] sm:w-[90%] max-w-4xl mx-auto! py-0! px-3! sm:px-5! border border-border shadow-xs rounded-md">
           <h1 className=" text-2xl font-bold text-main! border-b border-border py-5! px-0! mb-5!">
             {" "}
             Order Summary
@@ -89,12 +88,14 @@ function Cart() {
                         </div>
                       </div>
                     </div>
-                    <div
+                    <button
+                      type="button"
                       onClick={() => removeItem(item.id)}
+                      aria-label={`Remove ${item.title} from cart`}
                       className="outline-none border-none bg-transparent text-2xl text-red-600 cursor-pointer transition-transform duration-300 hover:scale-105"
                     >
                       <FaTrashAlt />
-                    </div>
+                    </button>
                   </div>
                 );
               })
@@ -104,7 +105,7 @@ function Cart() {
           <div className="button_summary border-t border-border pt-6!">
             <div className="shop_table flex items-center justify-between mb-5!">
               <p className="text-xl font-bold text-main!">Total:</p>
-              <span className="total_checkout text-xl font-bold">{totle}</span>
+              <span className="total_checkout text-xl font-bold">{total}</span>
             </div>
             <div className="button_div border-t border-border py-7.5! px-0!">
               <button

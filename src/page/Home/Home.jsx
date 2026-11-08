@@ -1,4 +1,3 @@
-// import React from "react";
 import { useEffect, useState } from "react";
 import HeroSlider from "../../conponents/HeroSlider";
 import SlideProduct from "../../conponents/slideProducts/SlideProduct";
@@ -33,42 +32,52 @@ const categories = [
 ];
 
 function Home() {
-  const [products, setproducts] = useState({});
-  // دي يعني كل المنتجات اللي انا تفضطها
-
+  const [products, setProducts] = useState({});
   const [loading, setLoading] = useState(true);
-  // لو الموقع واقف اي اللي هيحصل ممكن يظهر حاجه
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         const results = await Promise.all(
-          categories.map(async (categort) => {
-            const res = await fetch(
-              `https://dummyjson.com/products/category/${categort}`,
-            );
-            const data = await res.json();
-            return { [categort]: data.products };
+          categories.map(async (category) => {
+            try {
+              const res = await fetch(
+                `https://dummyjson.com/products/category/${category}`,
+              );
+
+              if (!res.ok) {
+                throw new Error(`فشل تحميل تصنيف ${category}`);
+              }
+
+              const data = await res.json();
+
+              return [
+                category,
+                {
+                  items: Array.isArray(data.products) ? data.products : [],
+                  error: "",
+                },
+              ];
+            } catch {
+              return [
+                category,
+                {
+                  items: [],
+                  error: "تعذر تحميل منتجات هذا التصنيف.",
+                },
+              ];
+            }
           }),
         );
 
-        const productsData = Object.assign({}, ...results);
-        // هنا انا بخزن البيانات في متغير
-        setproducts(productsData);
-        // علشام اقدر استخدمها برحتي setproducts هنا انااستخدمت
-      } catch (error) {
-        console.log("Error fetching products:", error);
+        setProducts(Object.fromEntries(results));
       } finally {
         setLoading(false);
       }
-      // يعني لما البيانات تحمل finally
     };
 
     fetchProducts();
   }, []);
-  // انا هنا بجيب كل المنتجات بكل التفاصيل
-
-  // console.log(products);
 
   return (
     <PageTransition>
@@ -82,9 +91,10 @@ function Home() {
             categories.map((category) => (
               <SlideProduct
                 key={category}
-                data={products[category]}
+                data={products[category]?.items ?? []}
                 // دي يعني اسامي المنتجات category .دي يعني كل المنتجات اللي اضافت بتفاصيل products
                 // يعني كل منتج هيكون موجود اسم المنتج هيكون موجود فوق
+                error={products[category]?.error}
                 title={category.replace("-", " ")}
                 // دا بيجيب كل الاسم بتاع كل منتج
               />

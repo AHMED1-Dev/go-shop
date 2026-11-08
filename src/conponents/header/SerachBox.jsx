@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 function SerachBox() {
   const [serachTerm, setSerachTerm] = useState("");
   const [suggestions, setSuggestions] = useState([]);
+  const [hasSearched, setHasSearched] = useState(false);//
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -18,22 +19,69 @@ function SerachBox() {
     setSuggestions([]);
   };
 
+  // useEffect(() => {
+  //   const fetchSuggestions = async () => {
+  //     if (!serachTerm.trim()) {
+  //       setSuggestions([]);
+  //       return;
+  //     }
+  //     try {
+  //       const res = await fetch(
+  //         `https://dummyjson.com/products/search?q=${encodeURIComponent(serachTerm)}`,
+  //       );
+  //       const data = await res.json();
+  //       setSuggestions(data.products.slice(0, 5) || []);
+  //       // علشان انا لما ابحث علي منتج لو المنتج اللي انا ببحث عليها في 10 منتجات انا مش عاوز يظهر ال10 منتجات انا عاوز يظهر 5 بس slice(0, 5) انا عملت
+  //     } catch (error) {
+  //       console.log("Search Error :", error);
+  //       setSuggestions([]);
+  //     }
+  //   };
+
+  //   const timeoutId = setTimeout(() => {
+  //     fetchSuggestions();
+  //   }, 300);
+
+  //   return () => clearTimeout(timeoutId);
+  // }, [serachTerm]);
+
+  // console.log(suggestions);
+
   useEffect(() => {
+    const controller = new AbortController();
+    // بيسمح بإلغاء طلب البحث القديم لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
+
     const fetchSuggestions = async () => {
       if (!serachTerm.trim()) {
         setSuggestions([]);
+        setHasSearched(false);// لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
         return;
       }
+
       try {
         const res = await fetch(
-          `https://dummyjson.com/products/search?q=${encodeURIComponent(serachTerm)}`,
+          `https://dummyjson.com/products/search?q=${encodeURIComponent(
+            serachTerm.trim(),
+          )}`,
+          {
+            signal: controller.signal,
+            // علشان يكون قابلًا للإلغاء fetch بنمرره إلى :signal
+          },
         );
+
+        if (!res.ok) {
+          throw new Error("Failed to fetch suggestions");
+        }
+
         const data = await res.json();
+
         setSuggestions(data.products.slice(0, 5) || []);
-        // علشان انا لما ابحث علي منتج لو المنتج اللي انا ببحث عليها في 10 منتجات انا مش عاوز يظهر ال10 منتجات انا عاوز يظهر 5 بس slice(0, 5) انا عملت
+        setHasSearched(true);// لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
       } catch (error) {
-        console.log("Search Error :", error);
-        setSuggestions([]);
+        if (error.name !== "AbortError") {
+          console.log("Search Error:", error);
+          setSuggestions([]);
+        }
       }
     };
 
@@ -41,10 +89,13 @@ function SerachBox() {
       fetchSuggestions();
     }, 300);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+      // Effect بيلغي الطلب السابق عند تشغيل تنظيف الـ
+    };
   }, [serachTerm]);
 
-  // console.log(suggestions);
 
   useEffect(() => {
     setSuggestions([]);
@@ -77,11 +128,8 @@ function SerachBox() {
       {suggestions.length > 0 && (
         <ul className="absolute bg-white w-full! list-none mt-1! border border-border z-50">
           {suggestions.map((item) => (
-            <Link to={`/products/${item.id}`}>
-              <li
-                className=" flex items-center gap-2 py-1! px-2! border-b border-border"
-                key={item.id}
-              >
+            <Link key={item.id} to={`/products/${item.id}`}>
+              <li className=" flex items-center gap-2 py-1! px-2! border-b border-border">
                 <img
                   className="w-10! h-10 object-contain"
                   src={item.images[0]}
@@ -92,6 +140,12 @@ function SerachBox() {
             </Link>
           ))}
         </ul>
+      )}
+
+      {hasSearched && serachTerm.trim() && suggestions.length === 0 && (
+        <p className="absolute bg-white w-full p-3! border border-border z-50">
+          No suggestions found.
+        </p>
       )}
     </div>
   );

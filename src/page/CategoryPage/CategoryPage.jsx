@@ -6,22 +6,51 @@ import PageTransition from "../../conponents/PageTransition";
 
 function CategoryPage() {
   const { category } = useParams();
-  //   console.log(category);
+  // console.log(category);
 
-  const [categoryProducts, setCategoryProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [categoryData, setCategoryData] = useState({
+    category: "",
+    products: [],
+    total: 0,
+    error: "",
+  });
+  const loading = categoryData.category !== category;
 
   useEffect(() => {
-    fetch(`https://dummyjson.com/products/category/${category}`)
-      .then((res) => res.json())
-      .then((data) => {
-        setCategoryProducts(data);
+    const controller = new AbortController();
+
+    fetch(`https://dummyjson.com/products/category/${category}`, {
+      signal: controller.signal,
+    })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error("تعذر تحميل منتجات هذا التصنيف.");
+        }
+
+        return res.json();
       })
-      .catch((error) => console.log(error))
-      .finally(() => setLoading(false));
-  });
-  // تتغير category بتشتغل لما useEffect
-  // console.log(categoryProducts);
+      .then((data) => {
+        setCategoryData({
+          category,
+          products: data.products ?? [],
+          total: data.total ?? 0,
+          error: "",
+        });
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          setCategoryData({
+            category,
+            products: [],
+            total: 0,
+            error: err.message,
+          });
+        }
+      });
+
+    return () => controller.abort();
+  }, [category]);
+  const error = categoryData.category === category ? categoryData.error : "";
 
   return (
     <PageTransition key={category}>
@@ -29,17 +58,21 @@ function CategoryPage() {
       <div className="">
         {loading ? (
           <SlideProductLoading key={category} />
+        ) : error ? (
+          <div className="w-[90%] mx-auto! max-w-337.5">
+            <p className="text-red-500 text-center py-10">{error}</p>
+          </div>
         ) : (
           // container
           <div className="w-[90%] mx-auto! max-w-337.5">
             <div className="top_slide relative pt-2.5! pr-5! pl-0">
               <h2 className="text-3xl text-main! mb-2.5! mt-3.5! capitalize">
-                {category} : {categoryProducts.total}
+                {category} : {categoryData.total}
               </h2>
             </div>
             {/* Products */}
             <div className="flex items-center justify-between flex-wrap gap-4 py-7!">
-              {categoryProducts.products.map((item, index) => {
+              {categoryData.products.map((item, index) => {
                 return <Product item={item} key={index} />;
               })}
             </div>

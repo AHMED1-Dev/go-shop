@@ -8,7 +8,7 @@ function SerachResults() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const query = new URLSearchParams(useLocation().search).get("query");
-  // console.log(results);
+  console.log(query);
 
   useEffect(() => {
     const fetchData = async () => {

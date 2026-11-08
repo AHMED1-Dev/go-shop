@@ -10,9 +10,6 @@ import "swiper/css/pagination";
 import { Autoplay, Pagination } from "swiper/modules";
 import { Link } from "react-router-dom";
 
-// import required modules
-// import { Autoplay, Pagination, Navigation } from 'swiper/modules';
-
 import HeroImage from "../assets/images/Hero.jpeg";
 import HeroImage1 from "../assets/images/Hero1.jpeg";
 import HeroImage2 from "../assets/images/Hero2.jpeg";

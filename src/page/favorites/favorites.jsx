@@ -16,18 +16,6 @@ function favorites() {
             </h2>
           </div>
 
-          {/* {favorites.length > 0 ? ( 
-            <div className="flex flex-wrap gap-5 mt-5">
-              {favorites.map((item) => (
-                <Product item={item} key={item.id} />
-              ))}
-            </div>
-          ) : (
-            <div className="text-3xl text-main! mb-2.5! mt-3.5! capitalize text-center">
-              No favorites yet
-            </div>
-          )} */}
-
           {favorites.length === 0 ? (
             <div className="text-3xl text-main! mb-2.5! mt-3.5! capitalize text-center">
               No favorites yet
