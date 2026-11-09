@@ -5,47 +5,19 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 function SerachBox() {
   const [serachTerm, setSerachTerm] = useState("");
   const [suggestions, setSuggestions] = useState([]);
-  const [hasSearched, setHasSearched] = useState(false);//
+  const [hasSearched, setHasSearched] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
   const handleSbumit = (e) => {
     e.preventDefault();
-    // console.log(serachTerm);
+
     if (serachTerm.trim()) {
-      // يكون مكتوب عليها قيمه search فاضي وانا دوست عليها ميرحش علي الصفحه فاضيه لازم  search علشان لو  serachTerm.trim() انا بعمل دي
+      setHasSearched(false);
+      setSuggestions([]);
       navigate(`/search?query=${encodeURIComponent(serachTerm.trim())}`);
     }
-    setSuggestions([]);
   };
-
-  // useEffect(() => {
-  //   const fetchSuggestions = async () => {
-  //     if (!serachTerm.trim()) {
-  //       setSuggestions([]);
-  //       return;
-  //     }
-  //     try {
-  //       const res = await fetch(
-  //         `https://dummyjson.com/products/search?q=${encodeURIComponent(serachTerm)}`,
-  //       );
-  //       const data = await res.json();
-  //       setSuggestions(data.products.slice(0, 5) || []);
-  //       // علشان انا لما ابحث علي منتج لو المنتج اللي انا ببحث عليها في 10 منتجات انا مش عاوز يظهر ال10 منتجات انا عاوز يظهر 5 بس slice(0, 5) انا عملت
-  //     } catch (error) {
-  //       console.log("Search Error :", error);
-  //       setSuggestions([]);
-  //     }
-  //   };
-
-  //   const timeoutId = setTimeout(() => {
-  //     fetchSuggestions();
-  //   }, 300);
-
-  //   return () => clearTimeout(timeoutId);
-  // }, [serachTerm]);
-
-  // console.log(suggestions);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -54,7 +26,7 @@ function SerachBox() {
     const fetchSuggestions = async () => {
       if (!serachTerm.trim()) {
         setSuggestions([]);
-        setHasSearched(false);// لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
+        setHasSearched(false); // لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
         return;
       }
 
@@ -76,7 +48,8 @@ function SerachBox() {
         const data = await res.json();
 
         setSuggestions(data.products.slice(0, 5) || []);
-        setHasSearched(true);// لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
+        // علشان انا لما ابحث علي منتج لو المنتج اللي انا ببحث عليها في 10 منتجات انا مش عاوز يظهر ال10 منتجات انا عاوز يظهر 5 بس slice(0, 5) انا عملت
+        setHasSearched(true); // لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
       } catch (error) {
         if (error.name !== "AbortError") {
           console.log("Search Error:", error);
@@ -96,9 +69,9 @@ function SerachBox() {
     };
   }, [serachTerm]);
 
-
   useEffect(() => {
     setSuggestions([]);
+    setHasSearched(false);
   }, [location]);
   // الفكرة: "لما المستخدم ينتقل من صفحة لصفحة تانية (أو حتى يعمل بحث جديد)، اقفل/امسح قائمة اقتراحات البحث المنسدلة تلقائيًا."
 
@@ -115,7 +88,10 @@ function SerachBox() {
           name="search"
           id="search"
           placeholder="Search For Products"
-          onChange={(e) => setSerachTerm(e.target.value)}
+          onChange={(e) => {
+            setSerachTerm(e.target.value);
+            setHasSearched(false);
+          }}
           autoComplete="off"
         />
         <button
