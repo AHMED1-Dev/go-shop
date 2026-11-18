@@ -14,7 +14,7 @@
 
 كانت Home تستخدم قائمة ثابتة من 24 slug، بينما BtmHeader يجلب التصنيفات من https://dummyjson.com/products/categories. أصبحت Home تجلب القائمة من نقطة API نفسها، ثم تطلب منتجات كل تصنيف باستخدام slug وتعرض العنوان من name. BtmHeader لم يتغير ضمن هذا البند.
 
-أكد المستخدم نجاح ESLint، وتحميل الأقسام بترتيب API على Slow 3G، وظهور رسالة فشل التصنيفات أثناء Offline ثم عودة الأقسام بعد استعادة الاتصال، وعزل فشل طلب Beauty عن بقية الأقسام، وعدم ظهور أخطاء من المشروع في Console بعد مغادرة الصفحة سريعًا على Slow 3G. لم يتأكد بصريًا من ظهور skeletons. طلب قائمة التصنيفات أصبح طلبًا إضافيًا مستقلًا، والأقسام ما زالت تنتظر أبطأ طلب منتجات بسبب Promise.all (البند 14). مظهر رسالة خطأ القسم وتحذير Swiper Loop Warning لم يتضح سببهما أو تاريخهما، ورسالة A listener indicated an asynchronous response... يُرجّح أنها من إضافة متصفح لكن المصدر غير مؤكد.
+أكد المستخدم ضمن اختبارات البند 9 نجاح ESLint، وتحميل الأقسام بترتيب API على Slow 3G، وظهور رسالة فشل التصنيفات أثناء Offline ثم عودة الأقسام بعد استعادة الاتصال، وعزل فشل طلب Beauty عن بقية الأقسام، وعدم ظهور أخطاء من المشروع في Console بعد مغادرة الصفحة سريعًا على Slow 3G. لم يتأكد بصريًا من ظهور skeletons في اختبار Issue 9 السابق للتعديل. عولج انتظار الأقسام في البند 14 لاحقًا. مظهر رسالة خطأ القسم وتحذير Swiper Loop Warning لم يتضح سببهما أو تاريخهما، ورسالة A listener indicated an asynchronous response... يُرجّح أنها من إضافة متصفح لكن المصدر غير مؤكد.
 قواعد Request Blocking التي استُخدمت أثناء الاختبار أُزيلت، وأُعيد إعداد Throttling إلى No throttling بعد انتهاء الاختبار.
 
 ## خريطة المكونات
@@ -30,11 +30,155 @@ Home
                 └── Product لكل منتج
 ~~~
 
-Home هي المكوّن الأب: تجلب قائمة التصنيفات أولًا، ثم منتجاتها، وتدير حالات التصنيفات والتحميل والخطأ والمنتجات. HeroSlider يعرض محتوى ترويجيًا. بعد وصول قائمة التصنيفات، يعرض SlideProductLoading هيكلًا لكل تصنيف أثناء طلب المنتجات. بعد اكتمال الطلبات، يعرض SlideProduct كل تصنيف ومنتجاته أو رسالة خطئه. PageTransition يلف الصفحة ويضيف الحركة.
+Home هي المكوّن الأب: تجلب قائمة التصنيفات أولًا، ثم تبدأ طلبًا مستقلًا لكل تصنيف. تدير حالات القائمة وحالة التحميل والخطأ العام، كما تدير لكل تصنيف منتجاته وحالة تحميله وخطأه. HeroSlider يعرض محتوى ترويجيًا. بعد وصول قائمة التصنيفات، يعرض SlideProductLoading لكل قسم ما دام طلبه جاريًا؛ ويستبدل كل هيكل بالقسم المكتمل فور وصول نتيجته، من دون انتظار بقية الأقسام. PageTransition يلف الصفحة ويضيف الحركة.
 
 # 1. Home.jsx
 
 المسار: src/page/Home/Home.jsx.
+
+## النص الحالي كاملًا
+
+هذا هو محتوى الملف الذي بُني عليه الشرح، بالترتيب من الاستيرادات إلى التصدير:
+
+~~~jsx
+import { useEffect, useState } from "react";
+import HeroSlider from "../../conponents/HeroSlider";
+import SlideProduct from "../../conponents/slideProducts/SlideProduct";
+import SlideProductLoading from "../../conponents/slideProducts/SlideProductLoading";
+import PageTransition from "../../conponents/PageTransition";
+
+function Home() {
+  const [categories, setCategories] = useState([]);
+  const [categoryProducts, setCategoryProducts] = useState({});
+  const [loadingCategories, setLoadingCategories] = useState(true);
+  const [categoriesError, setCategoriesError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    async function loadCategories() {
+      try {
+        const categoriesRes = await fetch(
+          "https://dummyjson.com/products/categories",
+          { signal },
+        );
+
+        if (!categoriesRes.ok) {
+          throw new Error("Failed to load categories");
+        }
+
+        const list = await categoriesRes.json();
+
+        if (!Array.isArray(list)) {
+          throw new Error("Invalid categories data");
+        }
+
+        setCategories(list);
+
+        list.forEach(({ slug }) => {
+          setCategoryProducts((current) => ({
+            ...current,
+            [slug]: {
+              items: [],
+              loading: true,
+              error: "",
+            },
+          }));
+
+          loadCategoryProducts(slug);
+        });
+      } catch (loadError) {
+        if (loadError.name !== "AbortError") {
+          setCategoriesError("تعذر تحميل التصنيفات. تحقق من اتصال الإنترنت.");
+        }
+      } finally {
+        if (!signal.aborted) {
+          setLoadingCategories(false);
+        }
+      }
+    }
+
+    async function loadCategoryProducts(slug) {
+      try {
+        const res = await fetch(
+          `https://dummyjson.com/products/category/${encodeURIComponent(slug)}`,
+          { signal },
+        );
+
+        if (!res.ok) {
+          throw new Error("Failed to load products");
+        }
+
+        const data = await res.json();
+
+        if (!signal.aborted) {
+          setCategoryProducts((current) => ({
+            ...current,
+            [slug]: {
+              items: Array.isArray(data.products) ? data.products : [],
+              loading: false,
+              error: "",
+            },
+          }));
+        }
+      } catch (requestError) {
+        if (requestError.name === "AbortError") {
+          return;
+        }
+
+        setCategoryProducts((current) => ({
+          ...current,
+          [slug]: {
+            items: [],
+            loading: false,
+            error: "تعذر تحميل منتجات هذا التصنيف.",
+          },
+        }));
+      }
+    }
+
+    loadCategories();
+
+    return () => controller.abort();
+  }, []);
+
+  return (
+    <PageTransition>
+      <div>
+        <HeroSlider />
+
+        {loadingCategories ? null : categoriesError ? (
+          <p className="py-10! text-center text-red-500!">{categoriesError}</p>
+        ) : (
+          categories.map(({ slug, name }) => {
+            const categoryData = categoryProducts[slug];
+
+            return categoryData?.loading ? (
+              // لو الموقع واقف دي اللي هيظهر
+              // اللي هتظهر Loading لو البيانات حملت الكود اللي تحت هيظهر ولو البيانات محملتش الكلمه دي
+              <SlideProductLoading key={slug} />
+            ) : (
+              <SlideProduct
+                key={slug}
+                data={categoryData?.items ?? []}
+                // دي يعني اسامي المنتجات category .دي يعني كل المنتجات اللي اضافت بتفاصيل products
+                //يعني كل منتج هيكون موجود اسم المنتج هيكون موجود فوق
+                error={categoryData?.error}
+                title={name}
+              />
+            );
+          })
+        )}
+      </div>
+    </PageTransition>
+  );
+}
+
+export default Home;
+~~~
+
+الأسطر التالية تشرح هذا المصدر بالترتيب، مع التركيز على مسؤولية كل جزء وتدفق البيانات.
 
 ## الاستيرادات
 
@@ -57,33 +201,35 @@ import PageTransition from "../../conponents/PageTransition";
 ~~~
 function Home() {
   const [categories, setCategories] = useState([]);
-  const [products, setProducts] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [categoryProducts, setCategoryProducts] = useState({});
+  const [loadingCategories, setLoadingCategories] = useState(true);
+  const [categoriesError, setCategoriesError] = useState("");
 ~~~
 
 - function Home يعرّف مكوّن React. المكوّن دالة ترجع JSX وReact تحولها إلى واجهة.
-- categories تبدأ بمصفوفة فارغة، ثم تحفظ فيها قائمة التصنيفات القادمة من API. كل عنصر يتضمن slug وname.
-- products تبدأ بكائن فارغ. بعد اكتمال طلبات المنتجات، يحوي هذا الكائن نتيجة لكل slug.
-- loading تبدأ true؛ وتحدد هل تعرض الصفحة هياكل التحميل أو محتوى الأقسام.
-- error تبدأ نصًا فارغًا، وتستخدم لخطأ جلب قائمة التصنيفات كلها. خطأ تصنيف واحد يُحفظ منفصلًا داخل products.
+- categories تبدأ بمصفوفة فارغة، ثم تحفظ فيها قائمة التصنيفات القادمة من API. كل عنصر يستخدم في العرض، خصوصًا slug وname.
+- categoryProducts تبدأ بكائن فارغ، ثم يُنشأ لها مدخل لكل slug. يحوي المدخل items وloading وerror الخاصة بذلك التصنيف.
+- loadingCategories تبدأ true، وتخص طلب قائمة التصنيفات فقط. عند انتهائه يمكن إظهار رسالة الخطأ العامة أو الأقسام.
+- categoriesError تبدأ نصًا فارغًا، وتخصص لفشل تحميل القائمة كلها. خطأ المنتجات لتصنيف واحد يُحفظ في مدخل ذلك التصنيف داخل categoryProducts.
 
-شكل تقريبي لحالة المنتجات بعد اكتمال الطلبات:
+شكل تقريبي لحالة قسمين، أحدهما ما زال يحمل والآخر اكتمل:
 
 ~~~js
 {
   beauty: {
     items: [{ id: 1, title: "..." }],
+    loading: false,
     error: ""
   },
   fragrances: {
     items: [],
+    loading: false,
     error: "تعذر تحميل منتجات هذا التصنيف."
   }
 }
 ~~~
 
-كل مفتاح هنا هو slug تصنيف. داخله items للمنتجات وerror لرسالة فشل ذلك التصنيف إن وجدت.
+كل مفتاح هنا هو slug تصنيف. داخله items للمنتجات، وloading لحالة الطلب، وerror لرسالة فشل ذلك التصنيف إن وجدت. أثناء الطلب يبدأ المدخل بـitems فارغة وloading تساوي true وerror فارغة.
 
 ## useEffect وتجهيز الإلغاء
 
@@ -93,12 +239,12 @@ useEffect(() => {
   const { signal } = controller;
 ~~~
 
-useEffect تشغّل callback بعد render. نضع جلب الشبكة فيها لأنه عمل جانبي. AbortController ينشئ أداة لإلغاء طلبات fetch، وsignal هي الإشارة التي نمررها لكل طلب حتى يعرف المتصفح أنه تابع لهذا المتحكم.
+useEffect تشغّل callback بعد render. نضع جلب الشبكة فيها لأنه عمل جانبي. ينشئ AbortController متحكمًا واحدًا لدورة هذا الـEffect. الخاصية signal هي AbortSignal المرتبطة به؛ تمرر إلى طلب القائمة وكل طلبات المنتجات، وبذلك يستطيع controller.abort() إلغاء الطلبات التابعة لهذا التشغيل. وجود متحكم مشترك يجعل تنظيف الصفحة يلغي كل الطلبات التي بدأها هذا الـEffect.
 
-## جلب القائمة ثم المنتجات
+## جلب قائمة التصنيفات وبدء طلبات المنتجات
 
 ~~~
-  async function load() {
+  async function loadCategories() {
     try {
       const categoriesRes = await fetch(
         "https://dummyjson.com/products/categories",
@@ -117,41 +263,46 @@ useEffect تشغّل callback بعد render. نضع جلب الشبكة فيها
 
       setCategories(list);
 
-      const results = await Promise.all(
-        list.map(async ({ slug }) => {
-          // طلب منتجات كل تصنيف
-        }),
-      );
+      list.forEach(({ slug }) => {
+        setCategoryProducts((current) => ({
+          ...current,
+          [slug]: {
+            items: [],
+            loading: true,
+            error: "",
+          },
+        }));
 
-      setProducts(Object.fromEntries(results));
+        loadCategoryProducts(slug);
+      });
     } catch (loadError) {
       if (loadError.name !== "AbortError") {
-        setError("تعذر تحميل التصنيفات. تحقق من اتصال الإنترنت.");
+        setCategoriesError("تعذر تحميل التصنيفات. تحقق من اتصال الإنترنت.");
       }
     } finally {
       if (!signal.aborted) {
-        setLoading(false);
+        setLoadingCategories(false);
       }
     }
   }
 ~~~
 
-- async تسمح باستخدام await داخل load. لا نجعل callback الخاصة بـuseEffect نفسها async؛ لأن React تتوقع منها لا شيء أو دالة تنظيف، بينما async ترجع Promise.
+- async تسمح باستخدام await داخل loadCategories. لا نجعل callback الخاصة بـuseEffect نفسها async؛ لأن React تتوقع منها لا شيء أو دالة تنظيف، بينما async ترجع Promise.
 - fetch الأولى تجلب قائمة التصنيفات من نقطة DummyJSON. تمرير signal يسمح بإلغائها.
-- res.ok تفحص نجاح حالة HTTP. fetch لا تعتبر كل رد HTTP مثل 404 أو 500 خطأً مرفوضًا تلقائيًا، لذلك يفحص الكود هذه الخاصية ويرمي Error عند الفشل.
+- categoriesRes.ok تفحص نجاح حالة HTTP. fetch لا تعتبر كل رد HTTP مثل 404 أو 500 خطأً مرفوضًا تلقائيًا، لذلك يفحص الكود هذه الخاصية ويرمي Error عند الفشل.
 - res.json تقرأ جسم الاستجابة وتحوله إلى JavaScript.
 - Array.isArray تتأكد أن القائمة مصفوفة قبل المرور عليها.
-- setCategories(list) تحفظ القائمة فورًا قبل طلبات المنتجات. في render التالي تكون التصنيفات موجودة، وloading ما زالت true، فينشئ JSX هيكل تحميل لكل تصنيف أثناء انتظار المنتجات.
-- Promise.all تنتظر مجموعة الطلبات التي تنتجها map. الطلبات تبدأ بالتوازي، لكن المنتجات لا تُحفظ للعرض النهائي إلا بعد اكتمال أبطأ طلب.
-- Object.fromEntries تحول أزواج النتائج إلى كائن مفاتيحه slugs. setProducts تحفظ هذا الكائن في state وتطلب من React إعادة العرض.
-- catch الخارجية تعالج فشل جلب القائمة أو أخطاء أخرى وصلت إلى هذا المستوى. عند فشل القائمة تحفظ error الرسالة «تعذر تحميل التصنيفات. تحقق من اتصال الإنترنت.».
+- setCategories(list) تحفظ القائمة بعد التحقق منها.
+- list.forEach تمر على القائمة لتجهيز حالة مستقلة لكل slug ثم بدء طلب منتجاته. لكل مدخل جديد، يبقي التحديث الوظيفي بقية مداخل categoryProducts باستخدام ...current ويضيف أو يهيئ [slug].
+- تهيئة المدخل بـitems فارغة وloading=true وerror فارغة تجعل JSX يعرف أن هذا القسم ينتظر بياناته. ثم يستدعي الكود loadCategoryProducts(slug) من دون await؛ لذلك لا ينتظر طلب هذا التصنيف كي يبدأ التالي. كل استدعاء يبدأ fetch ثم يتوقف عند await، فتبدأ الطلبات متزامنة من غير Promise.all.
+- catch الخارجية تعالج فشل جلب قائمة التصنيفات أو JSON غير الصالح أو خطأ متزامن وصل إلى هذا المستوى. عند فشل القائمة تحفظ categoriesError الرسالة «تعذر تحميل التصنيفات. تحقق من اتصال الإنترنت.».
 - AbortError يُستثنى من رسالة الخطأ؛ الإلغاء عند مغادرة الصفحة ليس خطأً ينبغي عرضه للمستخدم.
-- finally تعمل بعد النجاح أو الفشل. إذا لم يُلغَ الطلب، تجعل setLoading قيمة loading هي false حتى تنتقل الواجهة إلى فرع الخطأ أو الأقسام.
+- finally تعمل بعد النجاح أو الفشل. إذا لم تكن signal ملغاة، تجعل setLoadingCategories قيمة التحميل false حتى تنتقل الواجهة إلى فرع الخطأ العام أو الأقسام. هذا العلم يخص جلب القائمة فقط ولا ينتظر طلبات المنتجات.
 
-## طلب منتجات كل تصنيف وعزل الفشل
+## loadCategoryProducts: طلب مستقل لكل تصنيف وتحديثه
 
 ~~~jsx
-list.map(async ({ slug }) => {
+async function loadCategoryProducts(slug) {
   try {
     const res = await fetch(
       `https://dummyjson.com/products/category/${encodeURIComponent(slug)}`,
@@ -164,87 +315,97 @@ list.map(async ({ slug }) => {
 
     const data = await res.json();
 
-    return [
-      slug,
-      {
-        items: Array.isArray(data.products) ? data.products : [],
-        error: "",
-      },
-    ];
+    if (!signal.aborted) {
+      setCategoryProducts((current) => ({
+        ...current,
+        [slug]: {
+          items: Array.isArray(data.products) ? data.products : [],
+          loading: false,
+          error: "",
+        },
+      }));
+    }
   } catch (requestError) {
     if (requestError.name === "AbortError") {
-      throw requestError;
+      return;
     }
 
-    return [
-      slug,
-      {
+    setCategoryProducts((current) => ({
+      ...current,
+      [slug]: {
         items: [],
+        loading: false,
         error: "تعذر تحميل منتجات هذا التصنيف.",
       },
-    ];
+    }));
   }
-})
+}
 ~~~
 
-- map تمر على كل عنصر في قائمة التصنيفات، وتفك slug من العنصر الحالي.
+- loadCategoryProducts تستقبل slug واحدًا، لذلك كل استدعاء مسؤول عن قسم واحد فقط.
 - encodeURIComponent ترمز قيمة slug لتناسب وضعها داخل عنوان URL.
-- لكل تصنيف try/catch خاصة به. نجاح HTTP وقراءة JSON يرجعان زوجًا: slug ثم كائن فيه items وerror فارغة.
-- Array.isArray تضمن أن items مصفوفة؛ وإذا لم تكن data.products مصفوفة، يستخدم الكود [] كقيمة آمنة.
-- فشل HTTP أو الشبكة أو قراءة JSON يدخل catch الخاص بهذا التصنيف. تعيد catch نتيجة عادية فيها قائمة فارغة ورسالة الخطأ، لذلك لا يُسقط فشل تصنيف واحد نتائج بقية التصنيفات.
-- إذا كان الخطأ AbortError، يعيد الكود رميه كي يصل إلى catch الخارجية وتتوقف المعالجة عند إلغاء الصفحة بدل تسجيله كفشل تصنيف.
-- Promise.all تحافظ على ترتيب نتائج map. وبعدها يحولها Object.fromEntries إلى كائن يسهل الوصول إلى نتيجة كل تصنيف عبر slug.
+- fetch يطلب منتجات هذا التصنيف باستخدام signal المشترك. يفحص res.ok قبل تحليل JSON.
+- بعد نجاح JSON، يحمي شرط !signal.aborted تحديث الحالة إذا كان الطلب قد أُلغي. التحديث الوظيفي ينسخ الحالة الحالية ويستبدل مدخل slug الحالي فقط، فلا يمس نتائج الأقسام الأخرى.
+- Array.isArray تضمن أن items مصفوفة؛ وإذا لم تكن data.products مصفوفة يستخدم الكود [] كقيمة آمنة، ويعد الطلب مكتملًا بلا error.
+- عند النجاح تتحول loading إلى false ويُفرغ error؛ فتستطيع الواجهة عرض منتجات هذا التصنيف فورًا.
+- لكل تصنيف try/catch خاصة به. فشل HTTP أو الشبكة أو قراءة JSON ينتقل إلى catch هذا الاستدعاء، الذي يحدث مدخل slug نفسه إلى قائمة فارغة وloading=false ورسالة خطأ. لا يرفض ذلك طلبات التصنيفات الأخرى ولا يمنعها من النجاح.
+- إذا كان الخطأ AbortError، تنتهي الدالة من دون تسجيل خطأ للقسم؛ الإلغاء ليس فشلًا يخص المستخدم. catch الخاصة بطلب القائمة تتجاهل AbortError بالطريقة نفسها.
+- بخلاف Promise.all، لا تُجمع وعود المنتجات في حاجز واحد ولا تنتظر النتيجة الأبطأ. كل استجابة تحدّث state عند اكتمالها، وReact تعيد العرض بالقسم الذي اكتمل.
 
 ## التنظيف عند مغادرة الصفحة
 
 ~~~
-  load();
+  loadCategories();
 
   return () => controller.abort();
 }, []);
 ~~~
 
-- load() يبدأ طلب القائمة ثم طلبات المنتجات.
+- loadCategories() يبدأ طلب القائمة، وبعد نجاحها يبدأ طلب المنتجات لكل slug.
 - دالة التنظيف تستدعي controller.abort() عند إزالة Home. كل fetch مررنا لها signal نفسه؛ لذلك تُلغى طلبات القائمة والمنتجات التابعة له.
-- [] هي قائمة الاعتماديات الفارغة؛ effect تعمل عند تركيب Home ولا يعاد تشغيلها بسبب تحديث الحالات داخل المكوّن.
+- [] هي قائمة الاعتماديات الفارغة؛ effect تعمل عند تركيب Home ولا يعاد تشغيلها بسبب تحديث الحالات داخل المكوّن. إذا كانت طلبات الشبكة جارية، يجعل AbortController الإشارة ملغاة وتتعامل الدوال مع AbortError على أنه إلغاء متوقع.
 
 ## حالات العرض في JSX
 
 ~~~
-{loading ? (
-  categories.map((category) => (
-    <SlideProductLoading key={category.slug} />
-  ))
-) : error ? (
-  <p className="py-10! text-center text-red-500!">{error}</p>
+{loadingCategories ? null : categoriesError ? (
+  <p className="py-10! text-center text-red-500!">{categoriesError}</p>
 ) : (
-  categories.map(({ slug, name }) => (
-    <SlideProduct
-      key={slug}
-      data={products[slug]?.items ?? []}
-      error={products[slug]?.error}
-      title={name}
-    />
-  ))
+  categories.map(({ slug, name }) => {
+    const categoryData = categoryProducts[slug];
+
+    return categoryData?.loading ? (
+      <SlideProductLoading key={slug} />
+    ) : (
+      <SlideProduct
+        key={slug}
+        data={categoryData?.items ?? []}
+        error={categoryData?.error}
+        title={name}
+      />
+    );
+  })
 )}
 ~~~
 
-هذا تعبير شرطي متداخل يختار حالة واحدة:
+داخل div الرئيسي يظهر HeroSlider أولًا دائمًا. بعده يختار الشرط حالة الأقسام:
 
-1. **Loading:** إذا loading تساوي true، ينشئ SlideProductLoading لكل تصنيف جرى حفظه في categories. لذلك تُعرض الهياكل بعد وصول قائمة التصنيفات وأثناء جلب المنتجات. المستخدم لم يؤكد بصريًا ظهورها في الاختبار.
-2. **خطأ القائمة:** إذا انتهى التحميل وكانت error غير فارغة، يعرض رسالة فشل القائمة. هذا الخطأ يختلف عن فشل طلب تصنيف واحد لأن Home لا تملك قائمة يمكنها بناء الأقسام منها.
-3. **نجاح القائمة:** إذا لم يوجد تحميل أو خطأ عام، يمر على التصنيفات بالترتيب القادم من API، ويفك slug وname. يمرر slug كمفتاح React، والمنتجات ورسالة القسم إلى SlideProduct، ويعرض name كعنوان.
+1. **تحميل القائمة:** إذا loadingCategories تساوي true، تكون نتيجة الفرع null؛ لذلك يظهر HeroSlider ولا تظهر أقسام أو هياكل إلى أن تصل القائمة.
+2. **خطأ القائمة:** إذا انتهى طلب القائمة وكانت categoriesError غير فارغة، تظهر الرسالة العامة بدل الأقسام. لا يمكن إنشاء الأقسام من دون قائمة.
+3. **قائمة التصنيفات متاحة:** يمر map على القائمة بترتيب API، ويقرأ لكل slug حالته من categoryProducts. طالما categoryData.loading صحيحة يعرض SlideProductLoading لهذا التصنيف وحده.
+4. **طلب القسم انتهى:** يعرض SlideProduct لهذا slug فور انتهاء طلبه، سواء نجح أو فشل. العنوان يأتي من name، والمنتجات من items، والخطأ من error. لا يعتمد هذا الفرع على اكتمال بقية الأقسام.
 
-في data، التعبير products[slug]?.items يقرأ منتجات التصنيف بأمان. Optional chaining تمنع خطأ الوصول إذا كانت نتيجة التصنيف غير موجودة، و?? [] تستخدم مصفوفة فارغة إذا كانت القيمة null أو undefined. error={products[slug]?.error} يمرر رسالة هذا التصنيف فقط. أما title={name} فيستخدم الاسم الذي أعاده API بدل تكوين عنوان من slug.
+في data، categoryData?.items ?? [] يقرأ منتجات التصنيف بأمان؛ Optional chaining تمنع خطأ إذا كان مدخل التصنيف غير موجود، و?? [] توفر مصفوفة عند null أو undefined. error={categoryData?.error} يمرر رسالة هذا التصنيف فقط. أما title={name} فيستخدم الاسم الذي أعاده API بدل تكوين عنوان من slug. حالة المدخل غير الموجود احتياطية؛ في المسار المعتاد، تنشئ forEach مدخلًا لكل تصنيف قبل إتمام أي fetch.
 
 ## نقاط مهمة عن السلوك الحالي
 
-- الصفحة تجلب قائمة التصنيفات أولًا، ثم تبدأ طلب منتجات لكل تصنيف.
-- setCategories تسبق Promise.all، وهذا يتيح للواجهة إنشاء هيكل تحميل لكل تصنيف أثناء طلب المنتجات؛ لم يتأكد المستخدم من شكلها بصريًا.
+- الصفحة تجلب قائمة التصنيفات أولًا، ثم تهيئ حالة loading مستقلة لكل slug وتبدأ طلب منتجات كل تصنيف.
+- الطلبات مستقلة ومتوازية؛ كل نتيجة ناجحة أو فاشلة تحدث مدخل تصنيفها وتبدل هيكله فور اكتمال طلبه، من غير حاجز ينتظر أبطأ طلب.
+- تبقى الهياكل المؤقتة بعد وصول القائمة، قسمًا قسمًا، إلى أن يكتمل الطلب الخاص بذلك القسم. أكد الاختبار ظهور بيانات الأقسام بينما صور المنتجات تتحمل تدريجيًا؛ غير المؤكد الوحيد هو ظهور قسم جاهز بجوار قسم ما زال Skeleton بصريًا، لأن فرق التوقيت بين الطلبات نحو نصف ثانية.
 - فشل القائمة يعرض رسالة عامة للصفحة. فشل منتج تصنيف منفرد يعرض رسالة ذلك القسم وتبقى الأقسام الأخرى سليمة.
-- توجد catch خارجية فعلًا حول مسار load، إضافة إلى catch منفصلة داخل كل طلب تصنيف.
-- إذا نجح الطلب لكن data.products ليست مصفوفة، تصبح items فارغة وerror تظل فارغة، لذلك قد يظهر القسم فارغًا.
-- Promise.all تعني أن ظهور المنتجات ينتظر أبطأ طلب. هذا التأخير ما زال مفتوحًا ضمن البند 14.
+- توجد catch خارجية حول تحميل القائمة، وcatch داخل كل استدعاء loadCategoryProducts لمعالجة فشل قسمه.
+- إذا نجح الطلب لكن data.products ليست مصفوفة، تصبح items فارغة وerror تظل فارغة، لذلك قد يظهر القسم بلا منتجات أو رسالة Empty مخصصة.
+- الطلب الفاشل لقسم لا يمنع بقية الطلبات. AbortError الناتج عن الإلغاء يُتجاهل ولا يعرض كخطأ للقسم. أكد اختبار الخروج السريع على Slow 3G عدم ظهور أخطاء من المشروع في Console؛ ظهرت فقط تحذيرات Swiper Loop Warning المعروفة.
 - الصفحة الرئيسية والهيدر يطلبان قائمة التصنيفات كلٌ على حدة؛ توحّد مصدر البيانات لكن لا تشارك نتيجة الطلب بين المكوّنين.
 - تعليقات المطور داخل JSX في نهاية الملف لا تؤثر على التنفيذ.
 - export default Home يصدر المكوّن ليستخدمه نظام الصفحات والمسارات.
@@ -253,13 +414,14 @@ list.map(async ({ slug }) => {
 
 - **حذف AbortController ودالة التنظيف:** عند مغادرة الصفحة، تظل الطلبات الجارية تعمل حتى تنتهي أو تفشل، رغم أن Home لم تعد معروضة. هذا يهدر طلبات الشبكة، كما لن يكون هناك إلغاء لطلبات التشغيل الأول عند إعادة effects في StrictMode أثناء التطوير.
 - **حذف encodeURIComponent:** slugs الحالية تعمل عادةً من دونه لأنها نصوص URL بسيطة، لكن قيمة slug تحتوي مسافة أو رموزًا خاصة قد تكوّن رابطًا غير صحيح. ترميزها يجعل إدراجها داخل مسار URL آمنًا.
-- **نقل setCategories(list) إلى ما بعد Promise.all:** تظل categories فارغة أثناء جلب منتجات التصنيفات، لذلك لا تملك واجهة Loading تصنيفات تمر عليها لإنشاء SlideProductLoading. ستظهر الأقسام بعد انتهاء طلبات المنتجات بدل ظهور هياكل التحميل خلالها.
-- **حذف try/catch الداخلية لكل تصنيف:** فشل طلب واحد يرفض Promise الخاصة به، فترفض Promise.all المجموعة ويصل الخطأ إلى catch الخارجية. عندها تظهر رسالة فشل القائمة بدل الأقسام، حتى لو نجحت طلبات تصنيفات أخرى؛ وتضيع فائدة عزل فشل القسم.
+- **حذف تهيئة categoryProducts لكل slug:** لن تكون للواجهة حالة loading خاصة بالقسم؛ سيستخدم JSX القيمة الافتراضية الآمنة للبيانات وقد يظهر SlideProduct بقائمة فارغة بدل SlideProductLoading إلى أن يصل تحديث الطلب.
+- **إعادة تجميع النتائج في Promise.all:** ستبدأ الطلبات بالتوازي، لكن إذا جرى تأخير تحديث state إلى ما بعد Promise.all فسيعود ظهور الأقسام لانتظار أبطأ طلب، وهي المشكلة التي عالجها البند 14.
+- **حذف try/catch داخل loadCategoryProducts:** قد يتحول فشل fetch إلى رفض غير معالج بدل تحديث القسم برسالة، كما قد لا تُحدّث حالة loading للقسم إلى false.
 - **حذف catch الخارجية:** فشل طلب قائمة التصنيفات أو خطأ آخر يصل للمستوى الخارجي لن يحفظ رسالة error للمستخدم، وقد ينتج رفض Promise غير معالج. وجود finally وحده يوقف loading، لكنه لا يعرض رسالة الخطأ.
 
 ### StrictMode أثناء التطوير
 
-في وضع التطوير، React StrictMode قد يشغّل effect بهذا التسلسل: تشغيل، ثم cleanup، ثم تشغيل مرة ثانية. كل تشغيل ينشئ AbortController جديدًا؛ الـcleanup يلغي طلبات التشغيل الأول. أخطاء AbortError يعاد رميها من catch الداخلية، ثم تتجاهلها catch الخارجية، وfinally لا تغيّر loading إذا كانت signal ملغاة. التشغيل الثاني له signal جديد ويكمل طلباته بشكل طبيعي. هذا السلوك المقصود يساعد على كشف آثار جانبية لا تنظف نفسها؛ وهو خاص بفحوص التطوير، وليس تشغيلًا مزدوجًا معتادًا في production.
+في وضع التطوير، React StrictMode قد يشغّل effect بهذا التسلسل: تشغيل، ثم cleanup، ثم تشغيل مرة ثانية. كل تشغيل ينشئ AbortController جديدًا؛ الـcleanup يلغي طلبات التشغيل الأول. إذا نتج AbortError من طلب قائمة التصنيفات، تتجاهله catch الخارجية ولا تغيّر finally حالة التحميل لأن signal ملغاة. وإذا نتج من طلب منتجات، تنهي catch الداخلية ذلك الطلب فقط من دون عرض رسالة فشل. التشغيل الثاني له signal جديد ويكمل طلباته بشكل طبيعي. هذا السلوك المقصود يساعد على كشف آثار جانبية لا تنظف نفسها؛ وهو خاص بفحوص التطوير، وليس تشغيلًا مزدوجًا معتادًا في production.
 
 # 2. HeroSlider.jsx
 
@@ -490,7 +652,7 @@ function SlideProductLoading() {
 
 بقية عناصر البطاقة الفارغة تمثل مساحات الشارة والأيقونة والصورة والعنوان والتقييم والسعر ومعلومة نصية والأزرار. h-56 مثلًا يحجز ارتفاع مكان الصورة. هذه العناصر شكلية فقط وليست منتجًا أو أزرارًا وظيفية.
 
-export default SlideProductLoading يصدر المكوّن. Home تنشئ نسخة لكل عنصر في قائمة التصنيفات التي رجعت من API أثناء loading؛ العدد يتبع القائمة الحالية وليس رقمًا ثابتًا. كل نسخة تعرض بطاقة Skeleton واحدة.
+export default SlideProductLoading يصدر المكوّن. Home تنشئ نسخة لكل تصنيف يكون طلبه الجاري في categoryProducts؛ العدد يتبع قائمة التصنيفات الحالية وليس رقمًا ثابتًا. عند اكتمال طلب تصنيف، تستبدل Home هيكله وحده بـSlideProduct، بينما تستمر هياكل التصنيفات الأخرى في الظهور حتى تنتهي طلباتها. كل نسخة تعرض بطاقة Skeleton واحدة.
 
 # 5. PageTransition.jsx
 
@@ -539,9 +701,11 @@ Props قيم يمررها المكوّن الأب إلى الابن.
 ~~~text
 DummyJSON
   ↓ طلب قائمة التصنيفات
-Home state: categories, loading, error
-  ↓ طلب منتجات لكل slug
-Home state: products مفهرسة بالـslug
+Home state: categories, loadingCategories, categoriesError
+  ↓ تهيئة مدخل لكل slug وبدء طلبات مستقلة ومتوازية
+Home state: categoryProducts[slug] = { items, loading, error }
+  ↓ يتحدث كل مدخل فور اكتمال طلبه
+SlideProductLoading للقسم الجاري / SlideProduct للقسم المكتمل
   ↓ Props: data, title من name, error
 SlideProduct
   ↓ map لكل منتج
@@ -550,22 +714,24 @@ Product: item واحد
 
 # رحلة التحميل من فتح الصفحة حتى ظهور المنتجات
 
-1. React تستدعي Home. categories وproducts فارغتان، loading=true، وerror نص فارغ. يظهر HeroSlider، ولا يظهر Skeleton بعد لأن قائمة categories لم تصل بعد.
-2. useEffect تنشئ AbortController ودالة التنظيف، ثم تبدأ load.
-3. يطلب load قائمة التصنيفات من DummyJSON، ويفحص res.ok وأن JSON الناتج مصفوفة.
-4. عند نجاح القائمة، setCategories تحفظها قبل جلب المنتجات. في العرض التالي تظهر SlideProductLoading لكل slug بينما loading ما زالت true.
-5. يبدأ طلب منتجات لكل slug بالتوازي. encodeURIComponent ترمز slug داخل الرابط، وكل الطلبات تستخدم signal نفسه.
-6. إذا نجح طلب تصنيف، تُحفظ منتجاته في نتيجة مؤقتة وerror تكون فارغة. إذا فشل، تعيد catch الخاصة به items فارغة ورسالة هذا التصنيف؛ لذلك لا يمنع الفشل بقية النتائج.
-7. Promise.all تنتظر كل النتائج، ثم Object.fromEntries تحول أزواجها إلى كائن مفهرس بـslug، ويحفظه setProducts.
-8. finally تجعل loading=false إذا لم تكن الطلبات أُلغيت. عندها تعرض Home أقسام SlideProduct بالترتيب الذي رجع من API؛ القسم الفاشل يعرض عنوانه ورسالة الخطأ، والناجح يعرض Swiper.
-9. إذا فشل طلب قائمة التصنيفات أو كانت البيانات ليست مصفوفة، تحفظ catch الخارجية رسالة القائمة. بعد انتهاء التحميل تظهر الرسالة العامة بدل الأقسام.
-10. عند مغادرة الصفحة، تستدعي دالة التنظيف controller.abort(). الإلغاء لا يُعرض كخطأ للمستخدم ولا يحدّث حالة التحميل بعد الإزالة.
+1. React تستدعي Home. تبدأ categories وcategoryProducts فارغتين، وloadingCategories=true، وcategoriesError نص فارغ. يظهر HeroSlider، ولا يظهر Skeleton بعد لأن القائمة لم تصل بعد.
+2. useEffect تنشئ AbortController وتستخرج signal، وتعرّف loadCategories وloadCategoryProducts. ثم تستدعي loadCategories وتسجل دالة تنظيف تستدعي controller.abort().
+3. loadCategories تطلب قائمة التصنيفات من DummyJSON مع signal. تفحص categoriesRes.ok ثم تحلل JSON وتتأكد أن list مصفوفة.
+4. عند نجاح القائمة، setCategories تحفظها. بعدها يمر list.forEach على slugs؛ ويضيف setCategoryProducts الوظيفي لكل slug مدخلًا أوليًا items=[] وloading=true وerror="".
+5. في المرور نفسه يستدعى loadCategoryProducts(slug) من دون await. يبدأ fetch لكل قسم بعنوان مرمّز بـencodeURIComponent ومع signal نفسه؛ لذلك الطلبات مستقلة ومتوازية ولا ينتظر استدعاء القسم السابق.
+6. بعد انتهاء طلب ناجح، يفحص الكود signal.aborted ثم يستبدل مدخل slug وحده: items تصبح data.products إذا كانت مصفوفة، وloading=false وerror فارغة. يعاد render؛ فيظهر هذا القسم كـSlideProduct فورًا، ولو بقيت أقسام أخرى قيد التحميل.
+7. عند فشل HTTP أو الشبكة أو تحليل JSON في طلب قسم، تعيّن catch الخاصة به items=[] وloading=false ورسالة الخطأ لذلك slug. يتحول ذلك القسم من Skeleton إلى SlideProduct الذي يعرض رسالة الخطأ؛ وتواصل بقية الطلبات عملها.
+8. إذا فشل طلب قائمة التصنيفات أو كان JSON ليس مصفوفة، تحفظ catch الخارجية categoriesError. finally توقف loadingCategories إن لم تكن signal ملغاة. هذا لا ينتظر اكتمال طلبات المنتجات.
+9. JSX يخفي الأقسام فقط بينما قائمة التصنيفات نفسها قيد التحميل. بعد انتهائها يعرض خطأ القائمة إن وجد؛ وإلا يمر على القائمة بالترتيب الأصلي، فيختار لكل slug SlideProductLoading إذا كانت loading صحيحة أو SlideProduct إذا انتهت.
+10. في SlideProduct، الخطأ يجعل المكوّن يعرض رسالة التصنيف بدل Swiper؛ والنجاح يعرض المنتجات في الشريط. إذا نجح الطلب لكن products ليست مصفوفة، يمرر Home مصفوفة فارغة ولا توجد رسالة Empty مخصصة حاليًا.
+11. عند إزالة Home، تستدعي دالة التنظيف controller.abort() لإلغاء القائمة وأي طلبات منتجات لا تزال جارية. AbortError لا يعرض كخطأ للمستخدم. في اختبار الخروج السريع على Slow 3G لم تظهر أخطاء من المشروع في Console، وظهرت فقط تحذيرات Swiper Loop Warning المعروفة. الاختبار أكد سلامة الخروج من ناحية الأخطاء الظاهرة؛ أما ظهور قسم جاهز بجوار Skeleton في اللحظة نفسها فلم يتأكد بصريًا بسبب قصر فرق التوقيت بين الطلبات.
 
 مثال نتيجة furniture الناجحة:
 
 ~~~js
-products.furniture = {
+categoryProducts.furniture = {
   items: [{ id: 10, title: "Chair" }],
+  loading: false,
   error: ""
 };
 ~~~
@@ -575,8 +741,9 @@ Home تمرر items إلى data، وSlideProduct تحول كل منتج إلى �
 مثال fragrances عند الفشل:
 
 ~~~js
-products.fragrances = {
+categoryProducts.fragrances = {
   items: [],
+  loading: false,
   error: "تعذر تحميل منتجات هذا التصنيف."
 };
 ~~~
@@ -616,4 +783,4 @@ products.fragrances = {
 
 ## الخلاصة
 
-Home تجلب قائمة التصنيفات ثم منتجاتها، وتدير حالات categories وproducts وloading وerror. HeroSlider يعرض محتوى دعائيًا. SlideProductLoading يظهر بعد وصول القائمة وأثناء تحميل المنتجات. SlideProduct يعرض تصنيفًا ورسالة خطئه أو منتجاته، وProduct يعرض عنصرًا منفردًا. PageTransition يضيف الحركة حول الصفحة. تنتقل قائمة التصنيفات والمنتجات إلى JSX في Home، ثم تمر بيانات كل قسم عبر Props إلى SlideProduct، وبعدها يصل كل منتج إلى Product.
+Home تجلب قائمة التصنيفات ثم تهيئ categoryProducts بحالة مستقلة لكل slug، وتدير loadingCategories وcategoriesError لتحميل القائمة. طلبات المنتجات مستقلة ومتوازية؛ نتيجة كل طلب تحدّث items وloading وerror لقسم واحد، فيظهر SlideProductLoading للقسم الجاري وSlideProduct لكل قسم يكتمل من دون انتظار أبطأ طلب. HeroSlider يعرض محتوى دعائيًا. SlideProduct يعرض رسالة خطأ القسم أو منتجاته، وProduct يعرض عنصرًا منفردًا. PageTransition يضيف الحركة حول الصفحة. تمر بيانات كل قسم عبر Props إلى SlideProduct، وبعدها يصل كل منتج إلى Product.
