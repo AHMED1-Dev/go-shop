@@ -1,43 +1,58 @@
-# شرح تعليمي مفصل لملف `SerachBox.jsx`
+﻿# شرح تعليمي لملف SerachBox.jsx
 
-هذا الشرح مبني على الكود الموجود حاليًا في `src/conponents/header/SerachBox.jsx`، ويشرح مكوّن البحث من الاستيرادات حتى التصدير. اسم المجلد في المشروع مكتوب `conponents` واسم الملف مكتوب `SerachBox`؛ لذلك أستخدم المسار الفعلي كما هو. هذا الملف توثيق فقط ولا يغيّر كود المكوّن.
+الشرح ده مبني على الكود الحالي بالكامل في src/conponents/header/SerachBox.jsx. هنمشي من أول سطر لآخر سطر، ونوضح وظيفة كل جزء وسبب وجوده، وإزاي بيتفاعل مع بقية المكوّن. أسماء الملف والمجلد وبعض المتغيرات فيها تهجئة المشروع الحالية؛ هنشرحها زي ما هي من غير تعديل.
 
-## الفكرة العامة
+## وظيفة المكوّن
 
-مكوّن `SerachBox` يعرض خانة بحث في الهيدر. أثناء الكتابة ينتظر 300 مللي ثانية ثم يطلب اقتراحات منتجات من DummyJSON. عند وصول النتائج يعرض أول خمسة اقتراحات. إذا اكتمل البحث ولم يرجع اقتراحات، يعرض `No suggestions found.`. إذا أرسل المستخدم النموذج، ينتقل إلى صفحة النتائج باستخدام رابط من نوع `/search?query=phone`. كما يمسح الاقتراحات ورسالة عدم وجودها عند تغير مسار الصفحة.
+SerachBox هو مربع البحث الموجود في الهيدر الثابت في GoShop. المستخدم يكتب كلمة، وبعد ما يوقف كتابة لمدة 300 مللي ثانية، المكوّن يطلب اقتراحات منتجات من DummyJSON. يعرض أول خمسة اقتراحات. الضغط على اقتراح يفتح صفحة تفاصيل المنتج، وإرسال النموذج بـEnter أو زر العدسة يفتح صفحة نتائج البحث.
+
+الاقتراحات تفضل متاحة عند الانتقال العادي من Shop إلى Home لأن ظهورها لم يعد مربوطًا بمفتاح الصفحة. لكنها تختفي عند إرسال البحث أو اختيار منتج. كما أن رقم الطلب يمنع رد طلب أقدم من إعادة نتائج لم تعد مطلوبة.
 
 ## الكود الحالي كاملًا
 
-```jsx
-import { useEffect, useState } from "react";
+~~~jsx
+import { useEffect, useRef, useState } from "react";
 import { FaSearch } from "react-icons/fa";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 function SerachBox() {
   const [serachTerm, setSerachTerm] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [submittedTerm, setSubmittedTerm] = useState("");
   const navigate = useNavigate();
-  const location = useLocation();
+  const requestIdRef = useRef(0);
+
+  const isFresh = hasSearched;
+
+  const invalidateSuggestions = () => {
+    requestIdRef.current += 1;
+    setSuggestions([]);
+    setHasSearched(false);
+  };
 
   const handleSbumit = (e) => {
     e.preventDefault();
 
-    if (serachTerm.trim()) {
-      setHasSearched(false);
-      setSuggestions([]);
-      navigate(`/search?query=${encodeURIComponent(serachTerm.trim())}`);
+    const term = serachTerm.trim();
+
+    if (term) {
+      setSubmittedTerm(term);
+      invalidateSuggestions();
+      navigate(`/search?query=${encodeURIComponent(term)}`);
     }
   };
 
   useEffect(() => {
+    const requestId = ++requestIdRef.current;
+    // رقم يميز طلب البحث الحالي
     const controller = new AbortController();
-    // بيسمح بإلغاء طلب البحث القديم لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
+    // Effect وسيلة لإلغاء طلب الشبكة السابق عند تنظيف الـ
 
     const fetchSuggestions = async () => {
-      if (!serachTerm.trim()) {
+      if (!serachTerm.trim() || serachTerm.trim() === submittedTerm) {
         setSuggestions([]);
-        setHasSearched(false); // لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
+        setHasSearched(false);
         return;
       }
 
@@ -48,7 +63,6 @@ function SerachBox() {
           )}`,
           {
             signal: controller.signal,
-            // علشان يكون قابلًا للإلغاء fetch بنمرره إلى :signal
           },
         );
 
@@ -58,11 +72,13 @@ function SerachBox() {
 
         const data = await res.json();
 
-        setSuggestions(data.products.slice(0, 5) || []);
-        // علشان انا لما ابحث علي منتج لو المنتج اللي انا ببحث عليها في 10 منتجات انا مش عاوز يظهر ال10 منتجات انا عاوز يظهر 5 بس slice(0, 5) انا عملت
-        setHasSearched(true); // لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
+        if (requestId !== requestIdRef.current) return;
+        // لو الطلب اللي رجع مش هو الطلب الحالي، تجاهل النتيجة وما تحدّثش الاقتراحات
+
+        setSuggestions(data.products?.slice(0, 5) || []);
+        setHasSearched(true);
       } catch (error) {
-        if (error.name !== "AbortError") {
+        if (error.name !== "AbortError" && requestId === requestIdRef.current) {
           console.log("Search Error:", error);
           setSuggestions([]);
         }
@@ -76,19 +92,14 @@ function SerachBox() {
     return () => {
       clearTimeout(timeoutId);
       controller.abort();
-      // Effect بيلغي الطلب السابق عند تشغيل تنظيف الـ
-    };
-  }, [serachTerm]);
-
-  useEffect(() => {
-    setSuggestions([]);
-    setHasSearched(false);
-  }, [location]);
-  // الفكرة: "لما المستخدم ينتقل من صفحة لصفحة تانية (أو حتى يعمل بحث جديد)، اقفل/امسح قائمة اقتراحات البحث المنسدلة تلقائيًا."
+      if (requestId === requestIdRef.current) {
+        requestIdRef.current += 1;
+      }
+    }; // ويلغي طلب الشبكة، ويبطل صلاحية الطلب لو لسه هو الطلب الحالي timeout وده بيعمل تنظيف للـ
+  }, [serachTerm, submittedTerm]);
 
   return (
     <div className="relative">
-      {/* search_form */}
       <form
         onSubmit={handleSbumit}
         className="flex items-center bg-bg rounded-4xl border border-main"
@@ -101,7 +112,8 @@ function SerachBox() {
           placeholder="Search For Products"
           onChange={(e) => {
             setSerachTerm(e.target.value);
-            setHasSearched(false);
+            setSubmittedTerm("");
+            invalidateSuggestions();
           }}
           autoComplete="off"
         />
@@ -112,10 +124,18 @@ function SerachBox() {
           <FaSearch className="text-white" />
         </button>
       </form>
-      {suggestions.length > 0 && (
+
+      {isFresh && suggestions.length > 0 && (
         <ul className="absolute bg-white w-full! list-none mt-1! border border-border z-50">
           {suggestions.map((item) => (
-            <Link key={item.id} to={`/products/${item.id}`}>
+            <Link
+              key={item.id}
+              to={`/products/${item.id}`}
+              onClick={() => {
+                setSubmittedTerm(serachTerm.trim());
+                invalidateSuggestions();
+              }}
+            >
               <li className=" flex items-center gap-2 py-1! px-2! border-b border-border">
                 <img
                   className="w-10! h-10 object-contain"
@@ -129,7 +149,7 @@ function SerachBox() {
         </ul>
       )}
 
-      {hasSearched && serachTerm.trim() && suggestions.length === 0 && (
+      {isFresh && serachTerm.trim() && suggestions.length === 0 && (
         <p className="absolute bg-white w-full p-3! border border-border z-50">
           No suggestions found.
         </p>
@@ -139,414 +159,363 @@ function SerachBox() {
 }
 
 export default SerachBox;
-```
+~~~
 
-## شرح الأسطر الأولى: الاستيرادات
+## شرح الاستيرادات: أول ثلاثة أسطر
 
-```jsx
-import { useEffect, useState } from "react";
-```
+### React Hooks
 
-- `import` يجلب أسماء نحتاجها من مكتبة أخرى.
-- `useState` و`useEffect` هما React Hooks. الـHook وظيفة جاهزة من React نستخدمها داخل المكوّنات الوظيفية.
-- `useState` يحفظ بيانات تتغير أثناء الاستخدام، ويجعل React يعيد رسم الواجهة عند تحديثها.
-- `useEffect` ينفّذ أعمالًا جانبية بعد الرسم، مثل طلب بيانات من الإنترنت أو متابعة تغير المسار.
-- لو حذفنا `useState` فلن نستطيع استخدام الحالات المكتوبة أسفلًا. ولو حذفنا `useEffect` فلن تعمل طلبات الاقتراحات ولا عملية التنظيف عند تغير المسار.
+~~~jsx
+import { useEffect, useRef, useState } from "react";
+~~~
 
-```jsx
+- import يستورد أسماء من مكتبة أخرى.
+- useState يخزن قيمًا تتغير مع تفاعل المستخدم. عند تحديث الحالة، React يعيد رسم المكوّن بالقيم الجديدة.
+- useEffect ينفذ عملًا جانبيًا بعد الرسم. جلب بيانات من API مثال على side effect لأنه يتواصل مع خارج حساب JSX.
+- useRef يحتفظ بقيمة بين عمليات الرسم من غير ما يؤدي تغييرها وحده إلى إعادة الرسم. هنا نحفظ فيه رقم الطلب الحالي.
+- الأقواس المعقوفة تعني استيراد الأسماء المسماة من React.
+- حذف Hook من الاستيراد مع بقاء استخدامه يجعل الاسم غير معروف ويؤدي إلى خطأ.
+
+### أيقونة البحث
+
+~~~jsx
 import { FaSearch } from "react-icons/fa";
-```
+~~~
 
-- يستورد أيقونة البحث `FaSearch` من مجموعة Font Awesome داخل حزمة `react-icons`.
-- تظهر الأيقونة داخل زر الإرسال.
-- حذف الاستيراد مع إبقاء `<FaSearch />` يسبب خطأ لأن الاسم لن يكون معروفًا. حذف الاستيراد والعنصر معًا يزيل الأيقونة فقط.
-
-```jsx
-import { Link, useLocation, useNavigate } from "react-router-dom";
-```
-
-- `Link` ينشئ رابط تنقل داخليًا بين صفحات التطبيق من دون إعادة تحميل كاملة للمتصفح.
-- `useNavigate` يعطينا دالة للانتقال البرمجي، ونستعملها بعد إرسال البحث.
-- `useLocation` يعطينا معلومات الموقع الحالي، ونراقبها لمسح القائمة عند الانتقال.
-- كل هذه الأدوات تأتي من React Router، لذلك يجب أن يكون المكوّن داخل Router في شجرة التطبيق.
-- حذف أي اسم مع بقاء استعماله ينتج خطأ. وإذا لم نعد نستخدم الاسم، نحذف استيراده لتجنب كود غير لازم.
-
-## تعريف المكوّن والحالات والـHooks
-
-```jsx
-function SerachBox() {
-```
-
-يعرّف مكوّن React اسمه `SerachBox`. الأحرف الكبيرة في البداية مهمة؛ JSX يتعامل مع `<SerachBox />` على أنه مكوّن، بينما الاسم الصغير غالبًا يُفهم كعنصر HTML. التهجئة `Serach` موجودة في اسم الملف والمكوّن كما هي في المشروع؛ تغيير الاسم يتطلب تحديث أماكن الاستيراد والاستخدام أيضًا.
-
-### حالة عبارة البحث
-
-```jsx
-const [serachTerm, setSerachTerm] = useState("");
-```
-
-- `useState("")` ينشئ حالة تبدأ بنص فارغ.
-- `serachTerm` هي قيمة البحث الحالية، مثل `phone`.
-- `setSerachTerm` دالة تحديث القيمة. عند استدعائها، يحدّث React القيمة ويعيد رسم المكوّن.
-- الأقواس المربعة تستخدم تفكيك المصفوفة: القيمة الأولى هي الحالة، والثانية دالة تحديثها.
-- هذه الحالة تجعل مكوّن البحث يعرف ما كتبه المستخدم؛ من دونها لا يمكن بناء طلب الاقتراحات أو رابط النتائج من النص الحالي.
-- الاسم مكتوب `serachTerm` في الملف. من الأفضل في كود جديد عادةً كتابة `searchTerm`، لكن تغيير الاسم يتطلب تغيير كل المواضع المتصلة به.
-
-### حالة الاقتراحات
-
-```jsx
-const [suggestions, setSuggestions] = useState([]);
-```
-
-- `suggestions` قائمة المنتجات المقترحة حاليًا.
-- تبدأ بمصفوفة فارغة `[]` لأن البحث لم يُجرَ بعد.
-- `setSuggestions` تستبدل القائمة بنتيجة جديدة أو تمسحها.
-- استخدام مصفوفة ابتدائية يسمح بفحص `.length` واستخدام `.map()` بأمان.
-- لو حذفنا هذه الحالة فلن يكون لدينا مكان لحفظ المنتجات التي ترجع من API ولا طريقة لإظهارها.
-
-### حالة اكتمال البحث
-
-```jsx
-const [hasSearched, setHasSearched] = useState(false);
-```
-
-- `hasSearched` قيمة منطقية: `false` تعني أن البحث الحالي لم يصل إلى نتيجة نهائية، و`true` تعني أن طلب الاقتراحات انتهى بنجاح وأصبحت نتيجة القائمة معروفة.
-- `setHasSearched` تغيّر تلك القيمة.
-- نحتاجها للتمييز بين «لسه ما بحثناش» و«بحثنا ولم نجد اقتراحات». في الحالتين قد تكون `suggestions` فارغة، لكن الرسالة ينبغي أن تظهر في الحالة الثانية فقط.
-- من دون هذه الحالة قد تظهر رسالة عدم وجود اقتراحات قبل بدء الطلب، لمجرد أن القائمة تبدأ فارغة.
+FaSearch أيقونة عدسة جاهزة من مكتبة react-icons، ومصدرها مجموعة Font Awesome. نعرضها داخل زر البحث. حذف هذا الاستيراد مع بقاء JSX الخاص بالأيقونة يسبب خطأ؛ حذف الأيقونة والاستيراد معًا يزيل الشكل فقط.
 
 ### أدوات React Router
 
-```jsx
+~~~jsx
+import { Link, useNavigate } from "react-router-dom";
+~~~
+
+- Link رابط داخلي للانتقال لصفحة تفاصيل المنتج من غير تحميل كامل للتطبيق.
+- useNavigate يعطي المكوّن دالة تنقل برمجية، ونستخدمها لإرسال المستخدم إلى صفحة نتائج البحث.
+- لا نحتاج useLocation في النسخة الحالية؛ لم نعد نربط صلاحية الاقتراحات بمفتاح الصفحة.
+- أدوات React Router تعمل لما يكون المكوّن داخل Router.
+
+## تعريف المكوّن والحالات
+
+~~~jsx
+function SerachBox() {
+~~~
+
+ده مكوّن React وظيفي. JSX يستخدم الحرف الكبير في بداية الاسم لتمييز المكوّن عن عناصر HTML. الاسم والتهجئة كما هما في المشروع.
+
+### عبارة البحث الحالية
+
+~~~jsx
+const [serachTerm, setSerachTerm] = useState("");
+~~~
+
+- الحالة تبدأ بنص فارغ.
+- serachTerm تمثل ما كتبه المستخدم في الحقل الآن، مثل HP.
+- setSerachTerm تحدث الحالة عند تغيير input.
+- نحتاجها لبناء عنوان API ورابط صفحة النتائج.
+- لو حذفناها، لن يعرف المكوّن ما الذي يبحث عنه المستخدم.
+
+### منتجات الاقتراحات
+
+~~~jsx
+const [suggestions, setSuggestions] = useState([]);
+~~~
+
+- suggestions مصفوفة المنتجات التي رجعت من API.
+- تبدأ []، حتى تكون قابلة لاستخدام length وmap قبل وصول الرد.
+- setSuggestions تحفظ أول خمسة منتجات، أو تمسح القائمة عند إبطالها.
+- حذفها يمنع حفظ وعرض نتائج الاقتراحات.
+
+### حالة اكتمال البحث
+
+~~~jsx
+const [hasSearched, setHasSearched] = useState(false);
+~~~
+
+- قيمة منطقية تبدأ false.
+- بعد نجاح الطلب تصبح true، حتى نميز بين بحث لم يكتمل وبين بحث ناجح بلا منتجات.
+- setHasSearched تحدث هذه الحالة.
+- رسالة No suggestions found لا تظهر لمجرد أن suggestions فارغة عند بداية الصفحة؛ يلزم hasSearched أيضًا عبر isFresh.
+
+### العبارة التي أُرسلت
+
+~~~jsx
+const [submittedTerm, setSubmittedTerm] = useState("");
+~~~
+
+- تحفظ عبارة البحث التي أرسلها المستخدم، أو العبارة التي اختار منها منتجًا.
+- عند كتابة نص جديد تصير فارغة.
+- effect يقارنها بالنص الحالي؛ إذا كانا متساويين يرجع من غير جلب اقتراحات.
+- بعد Enter أو اختيار منتج، مساواة القيمتين تمنع إنشاء طلب اقتراحات جديد لنفس العبارة.
+- هي غير serachTerm: serachTerm محتوى الحقل الحالي، وsubmittedTerm علامة العبارة التي عوملت على أنها أُرسلت أو اختير منها منتج.
+
+### التنقل ومرجع رقم الطلب
+
+~~~jsx
 const navigate = useNavigate();
-```
+const requestIdRef = useRef(0);
+~~~
 
-`useNavigate()` يرجع دالة تنقل. نخزنها في `navigate` ثم نستدعيها مع مسار مثل `/search?query=phone`. حذف هذا السطر يمنع الانتقال البرمجي من نموذج البحث.
+- navigate دالة React Router التي تنقل إلى صفحة النتائج.
+- useRef(0) ينشئ مرجعًا له خاصية current تبدأ بصفر.
+- requestIdRef.current يخزن عدادًا للطلبات.
+- تغيير current لا يسبب render جديدًا، لأن رقم الطلب للتحكم في صلاحية نتائج غير مرئية وليس معلومة واجهة.
+- نزيد الرقم عند تشغيل طلب جديد، وعند إبطال النتائج، وعند تنظيف effect.
+- لو استخدمنا state للعداد فكل زيادة قد تسبب render إضافيًا، وهو غير مطلوب.
 
-```jsx
-const location = useLocation();
-```
+## isFresh وإبطال الاقتراحات
 
-`useLocation()` يرجع كائنًا يمثل الموقع الحالي في Router، ومنه المسار والبحث في الرابط. هنا نمرر كائن `location` إلى قائمة اعتماديات أثر، حتى يعاد تشغيل الأثر إذا انتقل المستخدم إلى عنوان آخر. حذف السطر مع إبقاء `[location]` يجعل `location` غير معرّف.
+~~~jsx
+const isFresh = hasSearched;
+~~~
 
-## دالة إرسال نموذج البحث
+isFresh متغير مشتق وليس state. هنا «fresh» معناها أن نجاح طلب الاقتراحات مسجل في hasSearched. لا يوجد فحص location.key. لذلك تغيير الصفحة وحده، مثل Shop إلى Home، لا يبطل الاقتراحات، ويظل النص والنتائج مرئيين ما دام TopHeader مستمرًا في الشجرة. عند إرسال البحث أو اختيار منتج، نجعل hasSearched false فتصبح isFresh false وتختفي القائمة.
 
-```jsx
+### invalidateSuggestions
+
+~~~jsx
+const invalidateSuggestions = () => {
+  requestIdRef.current += 1;
+  setSuggestions([]);
+  setHasSearched(false);
+};
+~~~
+
+- هذه دالة محلية تساعد على تنفيذ عملية واحدة متكررة: إبطال نتيجة الاقتراحات.
+- requestIdRef.current += 1 يرفع رقم الطلب الحالي. أي طلب قديم يحتفظ برقمه السابق، فيعرف عند عودته أنه لم يعد صالحًا.
+- setSuggestions([]) تزيل المنتجات من الواجهة والحالة.
+- setHasSearched(false) تجعل isFresh false، فتختفي القائمة ورسالة عدم النتائج.
+- نستخدمها عند الكتابة وعند إرسال البحث وعند النقر على اقتراح.
+- لو حذفنا زيادة رقم الطلب فقط، يمكن لرد قديم أن يمر بفحص الصلاحية ويعيد البيانات. لو حذفنا مسح الاقتراحات قد تبقى النتيجة السابقة في الواجهة. لو حذفنا تغيير hasSearched قد يظل شرط العرض صحيحًا لرسالة القائمة الفارغة.
+
+## handleSbumit: إرسال البحث
+
+~~~jsx
 const handleSbumit = (e) => {
   e.preventDefault();
 
-  if (serachTerm.trim()) {
-    setHasSearched(false);
-    setSuggestions([]);
-    navigate(`/search?query=${encodeURIComponent(serachTerm.trim())}`);
+  const term = serachTerm.trim();
+
+  if (term) {
+    setSubmittedTerm(term);
+    invalidateSuggestions();
+    navigate(`/search?query=${encodeURIComponent(term)}`);
   }
 };
-```
+~~~
 
-- `handleSbumit` دالة تُستدعى عند إرسال النموذج. الاسم في الكود به تهجئة `Sbumit`؛ الاسم نفسه لا يغير السلوك، لكن يجب أن يطابق الاسم المستخدم في `onSubmit`.
-- `e` هو كائن الحدث الذي يمرره المتصفح عند الإرسال.
-- `e.preventDefault()` يمنع التصرف الافتراضي للنموذج، وهو إعادة تحميل الصفحة وإرسال الحقول بالطريقة التقليدية. بدل ذلك نستخدم انتقال React Router.
-- `if (serachTerm.trim())` يتأكد أن النص بعد حذف المسافات من بدايته ونهايته ليس فارغًا. لذلك إدخال مسافات فقط لا ينقلك إلى صفحة بحث بلا كلمة.
-- `trim()` لا يغير الحالة الأصلية؛ يرجع نصًا جديدًا بلا المسافات الطرفية.
-- `setHasSearched(false)` يخفي رسالة «لا توجد اقتراحات» القديمة وقت بدء الانتقال.
-- `setSuggestions([])` يفرغ قائمة الاقتراحات القديمة كي لا تبقى ظاهرة بجانب نتيجة البحث الجديدة.
-- `navigate(...)` يغير المسار داخل التطبيق.
-- `encodeURIComponent(...)` يرمّز كلمة البحث كي تصلح كقيمة داخل عنوان URL. مثلًا المسافة تصبح `%20`، والحرف `&` يصبح `%26` بدل أن يُفسر كفاصل بين معاملات الرابط.
-- النص داخل backticks يسمح بإدراج نتيجة التعبير بين `${...}`. إذا كانت العبارة `wireless mouse` يصبح المسار مثل `/search?query=wireless%20mouse`.
-- لو حذفنا الشرط، قد يُفتح بحث فارغ. لو حذفنا `preventDefault` قد يعيد المتصفح تحميل الصفحة. لو حذفنا الترميز قد تتشوّه كلمات تحتوي رموزًا خاصة. ولو حذفنا مسح الحالات قد تبقى قائمة أو رسالة قديمة لحظيًا.
+- handleSbumit دالة حدث onSubmit. التهجئة كما في الكود.
+- e كائن الحدث الذي يمرره المتصفح/React عند إرسال form.
+- preventDefault يمنع السلوك الافتراضي للنموذج، وهو إعادة تحميل الصفحة.
+- term متغير محلي يحمل serachTerm بعد trim، أي إزالة المسافات من البداية والنهاية.
+- if (term) يمنع إرسال استعلام فارغ أو مكون من مسافات.
+- setSubmittedTerm(term) يسجل العبارة المرسلة. هذا يغيّر dependency في effect، وبعدها شرط effect يمنع طلب الاقتراحات للعبارة نفسها.
+- invalidateSuggestions يمسح القائمة ويجعل الطلب السابق غير صالح.
+- encodeURIComponent يرمز قيمة البحث لتناسب URL. مثلًا a&b تصبح a%26b حتى لا يُفهم & كفاصل معاملات.
+- navigate ينقل إلى /search?query=... من غير تحميل كامل للصفحة.
+- حذف preventDefault قد يعيد تحميل الموقع. حذف شرط term يسمح ببحث فارغ. حذف encodeURIComponent قد يسبب مشكلة عند الرموز الخاصة.
 
-> الإرسال ينقل المستخدم إلى صفحة النتائج، لكنه لا يمسح نص حقل الإدخال؛ لأن الحقل غير مربوط بقيمة state عبر `value`. النص يبقى ظاهرًا حتى يحدث تغيير آخر أو يعاد تركيب المكوّن.
+## useEffect من البداية للنهاية
 
-## أثر جلب الاقتراحات
-
-```jsx
+~~~jsx
 useEffect(() => {
-```
+  const requestId = ++requestIdRef.current;
+  // رقم يميز طلب البحث الحالي
+  const controller = new AbortController();
+  // Effect وسيلة لإلغاء طلب الشبكة السابق عند تنظيف الـ
 
-يخبر React بتشغيل وظيفة الأثر بعد عرض المكوّن. الأثر هنا مسؤول عن طلب اقتراحات البحث، وهو عمل جانبي لا نضعه في JSX.
+  const fetchSuggestions = async () => {
+    if (!serachTerm.trim() || serachTerm.trim() === submittedTerm) {
+      setSuggestions([]);
+      setHasSearched(false);
+      return;
+    }
 
-### إعداد الإلغاء
+    try {
+      const res = await fetch(
+        `https://dummyjson.com/products/search?q=${encodeURIComponent(
+          serachTerm.trim(),
+        )}`,
+        {
+          signal: controller.signal,
+        },
+      );
 
-```jsx
-const controller = new AbortController();
-```
+      if (!res.ok) {
+        throw new Error("Failed to fetch suggestions");
+      }
 
-- ينشئ كائنًا يستطيع إلغاء عملية غير متزامنة مثل `fetch`.
-- لكل تشغيل للأثر Controller مستقل، فيلغي التنظيف الطلب المرتبط بهذا التشغيل فقط.
-- من دونه قد يظل طلب كلمة قديمة جاريًا بعد أن يكتب المستخدم كلمة جديدة أو يغادر المكوّن.
+      const data = await res.json();
 
-```jsx
-// بيسمح بإلغاء طلب البحث القديم لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
-```
+      if (requestId !== requestIdRef.current) return;
+      // لو الطلب اللي رجع مش هو الطلب الحالي، تجاهل النتيجة وما تحدّثش الاقتراحات
 
-تعليق توضيحي فقط، لا ينفذ JavaScript. يشرح الهدف من `AbortController`. حذف التعليق لا يغير السلوك.
+      setSuggestions(data.products?.slice(0, 5) || []);
+      setHasSearched(true);
+    } catch (error) {
+      if (error.name !== "AbortError" && requestId === requestIdRef.current) {
+        console.log("Search Error:", error);
+        setSuggestions([]);
+      }
+    }
+  };
 
-### تعريف الدالة غير المتزامنة
+  const timeoutId = setTimeout(() => {
+    fetchSuggestions();
+  }, 300);
 
-```jsx
-const fetchSuggestions = async () => {
-```
+  return () => {
+    clearTimeout(timeoutId);
+    controller.abort();
+    if (requestId === requestIdRef.current) {
+      requestIdRef.current += 1;
+    }
+  }; // ويلغي طلب الشبكة، ويبطل صلاحية الطلب لو لسه هو الطلب الحالي timeout وده بيعمل تنظيف للـ
+}, [serachTerm, submittedTerm]);
+~~~
 
-- يعرّف دالة اسمها `fetchSuggestions`، لكنها لا تبدأ بمجرد تعريفها؛ يبدأ الطلب عند استدعائها لاحقًا.
-- `async` تسمح باستخدام `await` داخل الدالة، وتجعل الدالة ترجع Promise.
-- `await` يوقف تنفيذ هذه الدالة مؤقتًا حتى تنتهي العملية المنتظرة، لكنه لا يجمّد واجهة المتصفح.
-- تقسيم هذا المنطق في دالة يسهل معالجة الأخطاء والتحقق من النص قبل الطلب.
+### بداية effect ورقم الطلب
 
-```jsx
-if (!serachTerm.trim()) {
-  setSuggestions([]);
-  setHasSearched(false); // لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
-  return;
-}
-```
+- useEffect ينفذ بعد render.
+- requestIdRef.current يزيد واحدًا، وتُحفظ القيمة الجديدة في requestId المحلي لهذا التشغيل.
+- مثال: requestId قد يكون 4 لهذا البحث. لو تغير النص وبدأ طلب جديد، سيحصل على رقم مختلف.
+- التعليق يشرح أن الرقم يميز الطلب؛ التعليق لا ينفذ كودًا.
+- controller هو AbortController مستقل لهذا التشغيل من effect.
 
-- يفحص ما إذا كانت عبارة البحث فارغة أو مكوّنة من مسافات فقط.
-- `!` تعكس القيمة: النص الفارغ ينتج قيمة falsy، فيصبح الشرط صحيحًا.
-- `setSuggestions([])` يمسح اقتراحات الكلمة السابقة عند تفريغ الحقل.
-- `setHasSearched(false)` يمنع رسالة عدم وجود نتائج من الظهور لنص فارغ.
-- `return` ينهي الدالة فورًا، لذلك لا يتم إرسال طلب API بلا كلمة بحث.
-- لو حذفنا `return` سيكمل التنفيذ ويرسل طلبًا حتى لو لم توجد عبارة صالحة.
-- التعليق بعد تحديث الحالة لا ينفذ؛ وهو يصف إعادة الحالة عند خلو العبارة.
+### fetchSuggestions وasync/await
 
-### `try` والطلب إلى API
+- fetchSuggestions دالة async؛ تعريفها لا يرسل الطلب وحده. setTimeout يستدعيها لاحقًا.
+- async تسمح باستخدام await داخلها.
+- await ينتظر العملية غير المتزامنة داخل الدالة، مثل وصول رد fetch، من غير ما يجمّد تفاعل المستخدم مع الصفحة.
+- شرط البداية: النص فارغ بعد trim، أو النص الحالي يساوي submittedTerm.
+- في الحالتين نمسح الاقتراحات ونجعل hasSearched false ثم return لإنهاء الدالة.
+- الشرط يمنع البحث عن الفراغ، ويمنع إعادة طلب اقتراحات بعد Enter أو اختيار المنتج لنفس النص.
 
-```jsx
-try {
-```
+### fetch وعنوان DummyJSON
 
-يبدأ كتلة للأوامر التي قد تفشل. إذا رمى أحدها خطأ، ينتقل التنفيذ إلى `catch`.
+- try يحتوي عمليات يمكن أن تفشل، حتى نمسك أخطاءها في catch.
+- fetch يرسل طلب HTTP إلى endpoint البحث عن منتجات DummyJSON.
+- q هو معامل البحث في الرابط.
+- trim يشيل المسافات الطرفية من العبارة.
+- encodeURIComponent يرمز قيمة q؛ مثلًا المسافة تصبح ترميز URL، و& لا يُفسر كفاصل query.
+- await fetch ينتظر الرد ويحفظه في res.
+- signal: controller.signal يربط الطلب بأداة الإلغاء. استدعاء controller.abort() يطلب من المتصفح إلغاء الطلب.
+- res.ok يفحص حالة HTTP. fetch لا يرمي تلقائيًا خطأ لكل رد 404 أو 500.
+- عند !res.ok ينشئ throw new Error خطأ ينتقل إلى catch.
+- await res.json() يقرأ جسم الرد ويحوله من JSON إلى كائن JavaScript اسمه data.
 
-```jsx
-const res = await fetch(
-```
+### فحص requestId قبل تحديث الحالة
 
-- `fetch` واجهة المتصفح لإرسال طلب HTTP.
-- `await` ينتظر وصول استجابة الخادم قبل الانتقال إلى السطر التالي.
-- `res` هو كائن الاستجابة، وليس بعدُ بيانات المنتجات المفكوكة.
+~~~jsx
+if (requestId !== requestIdRef.current) return;
+~~~
 
-```jsx
-`https://dummyjson.com/products/search?q=${encodeURIComponent(
-  serachTerm.trim(),
-)}`,
-```
+ده حارس يمنع النتيجة القديمة من تحديث الواجهة. الطلب يحتفظ بقيمة requestId وقت بدايته؛ requestIdRef.current يعرض أحدث رقم الآن. لو اختلفا، الطلب صار قديمًا فنخرج بـreturn قبل setSuggestions وsetHasSearched.
 
-- هذا عنوان API الخاص بالبحث عن المنتجات في DummyJSON.
-- `q` هو اسم معامل البحث في العنوان.
-- `serachTerm.trim()` يزيل المسافات الزائدة من طرفي العبارة.
-- `encodeURIComponent` يحول النص إلى صيغة آمنة لقيمة URL. مثلًا `a&b` تتحول إلى `a%26b`.
-- وضع الاستدعاء على عدة أسطر تنسيق فقط؛ النتيجة النهائية نص URL واحد.
-- إذا حذفنا الترميز، فقد تُفسر رموز مثل `&` و`?` كجزء من بنية الرابط بدل كونها من كلمة البحث.
+التحقق مهم حتى لو عندنا AbortController: الإلغاء وسيلة لإيقاف الشبكة، أما مقارنة الرقم فهي فحص إضافي يمنع استخدام نتيجة قديمة إذا انتهى الطلب أو وصل الرد قرب لحظة الإلغاء.
 
-```jsx
-{
-  signal: controller.signal,
-  // علشان يكون قابلًا للإلغاء fetch بنمرره إلى :signal
-},
-```
+### حفظ الاقتراحات بعد النجاح
 
-- الوسيط الثاني لـ`fetch` هو كائن إعدادات الطلب.
-- `controller.signal` هو الإشارة التي يراقبها `fetch`.
-- عندما ينفذ التنظيف `controller.abort()`، يوقف المتصفح الطلب المرتبط بهذه الإشارة.
-- لو حذفنا `signal`، فلن يتصل هذا الطلب بالـController، وبالتالي لن يلغيه `abort()`.
-- التعليق يشرح الربط، ولا يؤثر حذفه في التنفيذ.
+~~~jsx
+setSuggestions(data.products?.slice(0, 5) || []);
+setHasSearched(true);
+~~~
 
-```jsx
-);
-```
+- data.products هي المنتجات التي رجعها API.
+- علامة الاستفهام بعد products هي Optional Chaining، وتُكتب ?.؛ معناها: نفّذ slice فقط لو data.products مش null ومش undefined.
+- slice(0, 5) يرجع أول خمسة عناصر في مصفوفة جديدة؛ لا يغير القائمة الأصلية.
+- setSuggestions تحفظ الاقتراحات وتجعل React يعيد الرسم.
+- setHasSearched(true) تعلن أن البحث اكتمل بنجاح.
+- لو data.products تساوي null أو undefined، Optional Chaining توقف الوصول وترجع undefined بدل رمي خطأ. بعد ذلك || [] تختار مصفوفة فارغة، فتحصل setSuggestions على [] بأمان.
+- لو data.products موجودة، ينفذ slice(0, 5) وتُحفظ أول خمسة منتجات. والمصفوفة الفارغة [] قيمة truthy في JavaScript، لذلك تظل نتيجة slice الفارغة [] ولا تستبدلها || [] .
+- الفرق عن السطر السابق data.products.slice(0, 5) || [] أن السطر القديم كان يحاول قراءة slice من data.products مباشرة قبل تقييم || []. إذا كانت products غائبة أو null كان يحدث TypeError، ولا يصل التنفيذ إلى البديل []. السطر الحالي يضيف حماية من هذه الحالة.
+- الحماية تخص غياب products أو كونها null فقط. لو data نفسها null/undefined، أو كانت products قيمة غير مناسبة لا تملك slice، فقد يظل هناك خطأ. الكود يتوقع عادةً أن data كائن API وأن products مصفوفة.
+- إذا كانت المنتجات موجودة، يظهر dropdown. إذا كانت القائمة فارغة، تظهر رسالة عدم وجود اقتراحات.
 
-يقفل استدعاء `fetch`. بعد وصول الرد، يكمل التنفيذ من فحص `res.ok`.
+### catch والأخطاء
 
-### فحص الاستجابة وتحويل JSON
+- catch(error) يمسك فشل الشبكة أو خطأ HTTP الذي رميناه أو مشكلة أثناء قراءة/استخدام البيانات.
+- AbortError معناه أن الطلب ألغي عمدًا؛ لا نطبعه كخطأ شبكة عادي.
+- الشرط الثاني requestId === requestIdRef.current يتأكد أن الخطأ يخص آخر طلب فقط. خطأ الطلب القديم يُتجاهل.
+- عند خطأ حالي، console.log يكتب تفاصيل للمطور في Console، وsetSuggestions([]) يمسح أي اقتراحات.
+- لا يصبح hasSearched true في فرع الخطأ؛ لذلك No suggestions found تعني بحثًا ناجحًا بلا منتجات. الفشل يسجل في Console فقط ولا يعرض رسالة خطأ للمستخدم في هذا المكوّن.
 
-```jsx
-if (!res.ok) {
-  throw new Error("Failed to fetch suggestions");
-}
-```
+## setTimeout وcleanup
 
-- `res.ok` تكون صحيحة عند نجاح حالة HTTP، عادةً ضمن نطاق 200–299.
-- `fetch` لا يرمي خطأ تلقائيًا لمجرد أن الخادم رد بحالة مثل 404 أو 500؛ لذلك نتحقق يدويًا.
-- `throw new Error(...)` ينشئ خطأ ويرميه، لينتقل التنفيذ مباشرة إلى `catch`.
-- من دون الفحص قد يحاول الكود قراءة رد فاشل كأنه نتائج ناجحة.
+### setTimeout
 
-```jsx
-const data = await res.json();
-```
-
-- `res.json()` يقرأ جسم الاستجابة ويحوّل JSON إلى كائن JavaScript.
-- العملية غير متزامنة؛ لذلك نستخدم `await`.
-- `data` ستحتوي غالبًا خاصية `products`، وهي قائمة المنتجات المطابقة.
-- لو حذفنا `await` ستكون `data` Promise بدل الكائن، ولن تعمل قراءة `data.products` كما هو مقصود.
-
-### تخزين الاقتراحات وإعلان اكتمال البحث
-
-```jsx
-setSuggestions(data.products.slice(0, 5) || []);
-```
-
-- `data.products` هي المنتجات التي أرجعها API.
-- `.slice(0, 5)` تنشئ مصفوفة جديدة تضم العناصر من الفهرس صفر حتى ما قبل الفهرس 5؛ أي أول خمسة منتجات كحد أقصى.
-- `setSuggestions(...)` تحفظ القائمة الجديدة وتطلب من React إعادة رسم الواجهة.
-- `|| []` بديل عند وجود قيمة falsy. ملاحظة: لو كانت `data.products` غير موجودة، فاستدعاء `.slice` سيحدث قبل الوصول إلى `|| []` ويسبب خطأ. يفترض هذا السطر أن API أعاد `products` كمصفوفة. صياغة أكثر دفاعًا يمكن أن تتحقق من `Array.isArray`، لكن هذا الشرح لا يغيّر الكود.
-- لو حذفنا `slice` ستظهر كل المنتجات التي أعادها API في القائمة المنسدلة، وليس أول خمسة فقط.
-
-```jsx
-// علشان انا لما ابحث علي منتج ... slice(0, 5) انا عملت
-```
-
-تعليق يشرح سبب عرض خمسة اقتراحات. نص التعليق لا ينفذ.
-
-```jsx
-setHasSearched(true); // لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
-```
-
-- بعد نجاح الطلب وقراءة البيانات، نعلن أن البحث اكتمل.
-- إذا كانت القائمة فارغة، يصبح شرط رسالة `No suggestions found.` قابلًا للتحقق.
-- إذا كانت القائمة تحتوي منتجات، تظهر الاقتراحات، ولا تظهر رسالة عدم العثور لأن شرطها يتطلب أيضًا أن يكون طول القائمة صفرًا.
-- الجزء بعد `//` تعليق لا يؤثر في الحالة. عمليًا هذا الاستدعاء يحصل بعد نجاح الطلب، وليس عند خروج المكوّن؛ عند الخروج cleanup يلغي الطلب.
-
-### التقاط الأخطاء
-
-```jsx
-} catch (error) {
-```
-
-يمسك الأخطاء التي تحصل داخل `try`، ومنها فشل الشبكة، وفشل حالة HTTP الذي أنشأناه، وفشل قراءة JSON أو استخدام بيانات غير متوقعة.
-
-```jsx
-if (error.name !== "AbortError") {
-```
-
-- الإلغاء المقصود من `AbortController` يسبب خطأ اسمه `AbortError`.
-- نميز الإلغاء عن الأعطال الحقيقية؛ لأن إلغاء طلب قديم أثناء الكتابة أمر طبيعي وليس رسالة فشل للمستخدم.
-- لو حذفنا الشرط فسنسجل الإلغاءات كأنها أخطاء بحث عادية.
-
-```jsx
-console.log("Search Error:", error);
-```
-
-يطبع وصفًا والخطأ في Console للمطور كي يساعد في تشخيص السبب. لا يعرض هذا السطر الخطأ للمستخدم. حذفه لا يمنع التقاط الخطأ، لكنه يقلل معلومات التشخيص.
-
-```jsx
-setSuggestions([]);
-```
-
-يمسح الاقتراحات عند فشل الطلب، حتى لا تبقى نتائج قديمة ظاهرة وكأنها تخص العبارة الحالية.
-
-**سلوك مهم في الكود الحالي:** داخل فرع الفشل لا يتم استدعاء `setHasSearched(true)`. لذلك عند فشل الشبكة تُمسح القائمة لكن رسالة `No suggestions found.` لا تظهر بالضرورة؛ لأنها تعتمد على `hasSearched`. هذا يميز الفشل عن نجاح البحث بلا نتائج، لكنه يعني أن الواجهة الحالية لا تعرض رسالة خطأ واضحة للمستخدم في هذا المكوّن.
-
-```jsx
-}
-}
-```
-
-يقفل شرط تجاهل الإلغاء، ثم يقفل كتلة `catch`.
-
-## تأخير الطلب ومنع الطلب مع كل ضغطة
-
-```jsx
+~~~jsx
 const timeoutId = setTimeout(() => {
   fetchSuggestions();
 }, 300);
-```
+~~~
 
-- `setTimeout` يجدول تنفيذ الدالة بعد مدة، ولا ينفذها فورًا.
-- `300` تعني 300 مللي ثانية، أي 0.3 ثانية.
-- إذا كتب المستخدم عدة أحرف بسرعة، فإن الأثر ينظف المؤقت السابق قبل تشغيله، فلا نرسل طلبًا لكل ضغطة. هذا نمط تأخير قصير شبيه بـdebounce.
-- `fetchSuggestions()` هو الاستدعاء الذي يبدأ العمل فعليًا بعد انتهاء الانتظار.
-- `timeoutId` رقم/معرّف المؤقت الذي يسمح بإلغائه.
-- لو أزلنا التأخير سيبدأ طلب عند كل تغير للنص، ما قد يزيد عدد الطلبات ويعرض اقتراحات متقلبة.
-- لو زادت المدة كثيرًا، ستتأخر الاقتراحات في الظهور.
+- setTimeout يجدول تنفيذ الدالة بعد وقت.
+- الرقم 300 بوحدة millisecond، أي 0.3 ثانية.
+- عند توقف المستخدم عن الكتابة لهذه الفترة، يبدأ fetchSuggestions.
+- هذا تأخير بسيط يقلل طلبًا مع كل حرف أثناء الكتابة السريعة.
+- timeoutId هو معرّف المؤقت كي نستطيع إلغاءه.
+- لو حذفنا التأخير سيبدأ طلبات أكثر للعبارات الوسيطة مثل H ثم HP ثم HPH.
 
-## تنظيف الأثر وإلغاء العمل القديم
+### cleanup
 
-```jsx
+~~~jsx
 return () => {
   clearTimeout(timeoutId);
   controller.abort();
-  // Effect بيلغي الطلب السابق عند تشغيل تنظيف الـ
+  if (requestId === requestIdRef.current) {
+    requestIdRef.current += 1;
+  }
 };
-```
+~~~
 
-- الدالة التي يعيدها `useEffect` تسمى cleanup، وينفذها React قبل تشغيل الأثر مجددًا أو عند إزالة المكوّن.
-- `clearTimeout(timeoutId)` يلغي المؤقت إن لم يكن قد انتهى. بذلك لا يبدأ طلب للكلمة القديمة بعد أن كتب المستخدم كلمة أحدث.
-- `controller.abort()` يلغي طلب الشبكة إن كان قد بدأ بالفعل.
-- الجمع بينهما يغطي مرحلتين: قبل بدء الطلب نلغي المؤقت، وبعد بدء الطلب نحاول إلغاء `fetch`.
-- التعليق للتوضيح فقط.
-- لو حذفنا التنظيف، قد تعمل مؤقتات وطلبات قديمة بلا حاجة، وقد تتنافس نتائجها على تحديث الاقتراحات.
+React يشغل الدالة الراجعة قبل تشغيل effect جديد بسبب تغير dependency، أو عند إزالة المكوّن.
 
-```jsx
-}, [serachTerm]);
-```
+- clearTimeout يلغي المؤقت إذا لم ينته بعد؛ فلا يبدأ طلب للكلمة السابقة.
+- controller.abort يلغي fetch إذا كان قد بدأ.
+- المقارنة تتأكد أن هذا effect ما زال صاحب أحدث رقم. لو نعم، نزيد الرقم لإبطال صلاحيته.
+- بهذه الطريقة نتعامل مع الطلب في ثلاث مراحل: إلغاء المؤقت، محاولة إلغاء الشبكة، ثم منع استعمال نتيجة الطلب القديم برقم الطلب.
+- التعليق في الكود يشرح هذه الخطوات فقط ولا يغير التنفيذ.
 
-- `[serachTerm]` قائمة اعتماديات الأثر.
-- يعمل الأثر عند تركيب المكوّن، ثم يعاد عند تغير عبارة البحث.
-- قبل إعادة تشغيله ينفذ React cleanup الخاص بالنسخة السابقة.
-- لو كانت القائمة `[]` لعمل الأثر عند التركيب فقط ولم يستجب لكتابة المستخدم.
-- لو حُذفت القائمة كليًا فقد يعمل الأثر بعد كل render، ما قد يسبب طلبات متكررة.
+### dependency array
 
-## أثر تغيّر الصفحة
+~~~jsx
+}, [serachTerm, submittedTerm]);
+~~~
 
-```jsx
-useEffect(() => {
-  setSuggestions([]);
-  setHasSearched(false);
-}, [location]);
-```
+- المصفوفة تحدد متى يعاد effect.
+- عند أول تركيب يعمل effect.
+- عند تغير serachTerm يعمل cleanup القديم ثم effect جديد.
+- عند تغير submittedTerm يحصل الشيء نفسه.
+- لا توجد location ضمن dependencies؛ التنقل وحده لا يبدأ fetch جديدًا ولا يخفي الاقتراحات.
+- عند الانتقال من Shop إلى Home، TopHeader يبقى خارج Routes ومحتوى البحث يبقى mounted، لذلك النص والحالات تبقى. لأن isFresh لا يفحص الصفحة، تظل الاقتراحات الناجحة ظاهرة.
+- لو أضفنا dependency للموقع قد نعيد جلب اقتراحات لمجرد الانتقال، وهذا غير مطلوب.
 
-- هذا أثر ثانٍ، مستقل عن أثر جلب الاقتراحات.
-- عند تركيب المكوّن أو تغير كائن `location`، يمسح الاقتراحات ويعيد `hasSearched` إلى `false`.
-- هذا مهم لأن `suggestions` الفارغة وحدها لا تكفي لمعرفة هل البحث لم يبدأ أم انتهى بلا نتائج. تصفير `hasSearched` يخفي الرسالة أثناء الانتقال.
-- مثال: إذا بحث المستخدم عن كلمة لا تطابق أي منتج، تصبح `hasSearched` صحيحة وتظهر الرسالة. عند الانتقال إلى `/search?query=...` يتغير `location`، فيعيد هذا الأثر الحالة إلى `false`، فتختفي الرسالة.
-- `[location]` تجعل الأثر يتفاعل مع تنقلات React Router. لو حذفنا الاعتمادية، لن يستجيب لتغير الموقع كما هو مقصود.
-- لو حذفنا `setSuggestions([])` قد تبقى قائمة اقتراحات مفتوحة بعد الانتقال. ولو حذفنا `setHasSearched(false)` قد تبقى رسالة عدم العثور لأن نص الإدخال لم يتغير.
+## JSX والحقل والنموذج
 
-```jsx
-// الفكرة: "لما المستخدم ينتقل من صفحة لصفحة تانية ..."
-```
+### الحاوية والنموذج
 
-تعليق يشرح النية، ولا يضيف سلوكًا. ملاحظة: الكود يمسح حالة الاقتراحات عند كل تغير `location`، لكن وصف «يعمل بحث جديد» يتحقق هنا إذا كان البحث الجديد يسبب تغير الموقع؛ أما الكتابة وحدها فيعالجها `onChange` وأثر `serachTerm`.
-
-### ملاحظة عن تحذير ESLint المحتمل
-
-إعدادات المشروع تستخدم توصيات `eslint-plugin-react-hooks`. قد يظهر تحذير من قاعدة `react-hooks/set-state-in-effect` على استدعاءات `setSuggestions` و`setHasSearched` داخل أثر `location`، لأن تحديث الحالة مباشرة داخل effect قد ينتج render إضافيًا. هذا تحذير متعلق بنمط كتابة الحالة وليس خطأ صياغة JSX. السلوك المقصود واضح، لكن لو ظهر التحذير ينبغي التعامل معه عند مراجعة الحل؛ لا ينبغي إخفاؤه عشوائيًا بتعطيل القاعدة. هذا الملف يشرح الكود الحالي ولا يطبق بديلًا.
-
-## واجهة JSX: الحاوية والنموذج
-
-```jsx
+~~~jsx
 return (
   <div className="relative">
-```
+    <form
+      onSubmit={handleSbumit}
+      className="flex items-center bg-bg rounded-4xl border border-main"
+    >
+~~~
 
-- `return` يرجع ما سيعرضه المكوّن.
-- JSX صياغة تسمح بكتابة شكل قريب من HTML داخل JavaScript، لكنها تتحول أثناء البناء إلى تعليمات React.
-- `<div>` حاوية عامة تجمع خانة البحث والاقتراحات.
-- `className` هو اسم خاصية CSS في JSX بدل `class`.
-- الصنف `relative` يجعل الحاوية مرجعًا للتموضع المطلق للقائمة والرسالة الموجودتين بداخلها.
-- لو أزلنا `relative` قد تتموضع الاقتراحات نسبةً إلى حاوية أخرى، فتظهر في مكان غير مناسب.
+- return يحدد الواجهة التي يرجعها المكوّن.
+- JSX صياغة لعناصر الواجهة داخل JavaScript.
+- div حاوية البحث.
+- relative يحدد مرجع التموضع للقائمة والرسالة اللتين تستخدمان absolute.
+- form يجمع input وزر الإرسال.
+- onSubmit يربط إرسال النموذج بـhandleSbumit.
+- className هي طريقة React لكتابة أصناف CSS. الأصناف هنا من Tailwind: flex لترتيب العناصر، items-center لمحاذاتها، bg-bg للخلفية، rounded للزوايا، وborder للإطار.
+- تغيير الأصناف يغير التصميم، لذلك لا نحتاجها لتفسير منطق البحث ولا نغيرها هنا.
 
-```jsx
-{/* search_form */}
-```
+### حقل input وonChange
 
-تعليق JSX. يختلف شكله عن تعليق JavaScript العادي لأنه داخل واجهة JSX. لا يظهر للمستخدم ولا يغير السلوك.
-
-```jsx
-<form
-  onSubmit={handleSbumit}
-  className="flex items-center bg-bg rounded-4xl border border-main"
->
-```
-
-- `<form>` يجمع حقل الإدخال وزر الإرسال.
-- `onSubmit={handleSbumit}` يربط حدث إرسال النموذج بالدالة التي شرحناها. الأقواس `{}` تسمح بإدراج قيمة JavaScript في JSX.
-- أصناف Tailwind تنسق النموذج: `flex` لترتيب العناصر أفقيًا، `items-center` لمحاذاتها رأسيًا، `bg-bg` لخلفية المشروع، `rounded-4xl` لاستدارة الزوايا، و`border border-main` لإطار بلون المشروع.
-- حذف `onSubmit` يمنع الدالة من العمل عند الضغط على الزر أو Enter.
-- النماذج تعطي سلوك إرسال طبيعيًا لحقل البحث، بما فيه استخدام Enter.
-
-## حقل الإدخال
-
-```jsx
+~~~jsx
 <input
   className="h-11.25 w-full py-1! px-4! bg-bg rounded-tl-[30px] rounded-bl-[30px]"
   type="text"
@@ -555,56 +524,57 @@ return (
   placeholder="Search For Products"
   onChange={(e) => {
     setSerachTerm(e.target.value);
-    setHasSearched(false);
+    setSubmittedTerm("");
+    invalidateSuggestions();
   }}
   autoComplete="off"
 />
-```
+~~~
 
-- `<input>` ينشئ خانة إدخال نصية.
-- `className` يحدد الارتفاع والعرض والمسافات والخلفية واستدارة الزاويتين اليسريين. تفاصيل هذه الأصناف شكلية؛ حذفها لا يوقف البحث لكنه يغير التصميم.
-- `type="text"` يجعل الحقل نصيًا.
-- `name="search"` اسم الحقل في نموذج HTML.
-- `id="search"` معرف يمكن استخدامه للربط بتسمية أو للوصول إليه في CSS/DOM. يجب أن يكون فريدًا إذا تكرر المكوّن أكثر من مرة في الصفحة.
-- `placeholder` نص إرشادي يظهر عندما يكون الحقل فارغًا.
-- `onChange` يعمل كلما تغير النص، مثل كتابة حرف أو حذفه.
-- `e` حدث التغيير، و`e.target` هو الحقل الذي تغير، و`e.target.value` النص الحالي داخله.
-- `setSerachTerm(e.target.value)` يحفظ النص في حالة React، وهذا يغير اعتماد أثر الاقتراحات فيبدأ تأخير/بحث جديد.
-- `setHasSearched(false)` يخفي رسالة نتيجة البحث السابق فور بدء كتابة نص جديد. بعد اكتمال طلب النص الجديد يضبط كود النجاح `hasSearched` إلى `true`.
-- `autoComplete="off"` يطلب من المتصفح عدم عرض اقتراحات الملء التلقائي المخزنة، لتقليل تداخلها مع قائمة الاقتراحات الخاصة بالتطبيق.
-- الحقل غير مضبوط كـcontrolled input لأنه لا يحتوي `value={serachTerm}`. لذلك React يتابع النص لأغراض البحث، لكن قيمة DOM هي التي تحتفظ بعرض النص في الحقل.
+- input عنصر إدخال.
+- className يحدد الارتفاع والعرض والمسافات والخلفية واستدارة الزاويتين اليسريين؛ لا يغير منطق البحث.
+- type text يجعل الحقل يقبل نصًا.
+- name اسم الحقل في form وid معرفه.
+- placeholder يظهر كإرشاد والحقل فارغ.
+- onChange يعمل عند كتابة أو مسح حرف.
+- e هو حدث التغيير، وe.target هو input، وe.target.value النص الجديد.
+- setSerachTerm تحفظ الكلمة الجديدة؛ هذا يغير dependency في effect فيبدأ مؤقت جديد.
+- setSubmittedTerm("") يمسح علامة العبارة السابقة حتى يسمح بطلب اقتراحات للنص الحالي.
+- invalidateSuggestions تبطل رقم الطلب القديم وتمسح الاقتراحات وتعطل ظهورها.
+- autoComplete off يطلب من المتصفح عدم إظهار اقتراحاته المحفوظة التي قد تتداخل مع قائمة الموقع.
+- لا توجد value={serachTerm} على الحقل، لذلك النص نفسه غير مضبوط بالكامل بواسطة React؛ المتصفح يحتفظ به في input وonChange يبلغ المكوّن عند تغيره.
 
-## زر البحث والأيقونة
+## زر البحث وEnter
 
-```jsx
+~~~jsx
 <button
   type="submit"
   className="w-11.25 h-11.25 flex items-center justify-center bg-main text-lg cursor-pointer rounded-tr-[30px] rounded-br-[30px]"
 >
   <FaSearch className="text-white" />
 </button>
-```
+~~~
 
-- `<button>` زر تفاعلي.
-- `type="submit"` يجعله يرسل النموذج، وبالتالي يستدعي `onSubmit`. لو غُيّر إلى `button` فلن يرسل النموذج تلقائيًا.
-- `className` يحدد الأبعاد والمحاذاة والخلفية وحجم الأيقونة ومؤشر اليد واستدارة الزاويتين اليمنيين.
-- `<FaSearch />` يعرض أيقونة البحث المستوردة.
-- `text-white` يجعل الأيقونة بيضاء.
-- حذف الزر يترك الحقل؛ قد يظل Enter قادرًا على الإرسال حسب سلوك النموذج، لكن المستخدم يفقد زر النقر.
+- button زر تفاعل.
+- type submit يرسل form.
+- FaSearch يعرض أيقونة العدسة، وtext-white يجعلها بيضاء.
+- بقية الأصناف تنسق المقاس واللون والمحاذاة والمؤشر والزوايا.
+- الضغط على الزر يشغل onSubmit، تمامًا مثل الضغط على Enter داخل input؛ كلاهما يستدعي handleSbumit.
 
-```jsx
-</form>
-```
+## قائمة الاقتراحات وLink
 
-يغلق النموذج بعد الحقل والزر.
-
-## عرض قائمة الاقتراحات و`map` و`Link`
-
-```jsx
-{suggestions.length > 0 && (
+~~~jsx
+{isFresh && suggestions.length > 0 && (
   <ul className="absolute bg-white w-full! list-none mt-1! border border-border z-50">
     {suggestions.map((item) => (
-      <Link key={item.id} to={`/products/${item.id}`}>
+      <Link
+        key={item.id}
+        to={`/products/${item.id}`}
+        onClick={() => {
+          setSubmittedTerm(serachTerm.trim());
+          invalidateSuggestions();
+        }}
+      >
         <li className=" flex items-center gap-2 py-1! px-2! border-b border-border">
           <img
             className="w-10! h-10 object-contain"
@@ -617,192 +587,106 @@ return (
     ))}
   </ul>
 )}
-```
+~~~
 
-- الأقواس `{}` تخرج من JSX إلى تعبير JavaScript.
-- `suggestions.length > 0` شرط العرض: لا ننشئ القائمة إلا إذا كان فيها منتج واحد على الأقل.
-- `&&` في JavaScript يعرض الطرف الثاني عندما يكون الشرط الأول صحيحًا. إذا كانت المصفوفة فارغة، لا تظهر `<ul>`.
-- `<ul>` قائمة غير مرتبة تحتوي الاقتراحات.
-- `absolute` يجعل القائمة موضوعة فوق تدفق الصفحة، و`relative` في الحاوية الأصلية يجعل موضعها مرتبطًا بخانة البحث.
-- بقية الأصناف تعطي خلفية بيضاء، عرض الحاوية، إزالة النقاط، هامشًا علويًا، إطارًا، وطبقة ظهور مرتفعة عبر `z-50`.
-- `suggestions.map((item) => (...))` تمر على كل عنصر في المصفوفة وترجع عنصر JSX لكل منتج.
-- `item` هو المنتج الحالي في كل دورة، وقد يحتوي `id` و`title` و`images`.
-- `<Link>` رابط داخلي من React Router. `to={`/products/${item.id}`}` ينشئ صفحة تفاصيل المنتج؛ لو كان `item.id` هو 12 يصبح المسار `/products/12`.
-- `key={item.id}` يعطي React معرّفًا ثابتًا لكل عنصر في القائمة كي يميز العناصر عند إعادة الرسم. استخدام معرّف المنتج أفضل من رقم الفهرس عادةً لأن المنتجات قد تتغير أو يعاد ترتيبها.
-- `<li>` عنصر القائمة الذي يضم صورة المنتج وعنوانه.
-- `<img>` يعرض الصورة الأولى `item.images[0]`. لو لم تحتوِ البيانات على `images` أو صورة أولى، قد لا تظهر الصورة؛ الكود يفترض أن API يرسلها.
-- `src` يحدد رابط الصورة، و`alt={item.title}` نص بديل يفيد قارئات الشاشة ويظهر إذا تعذر تحميل الصورة.
-- `{" "}` يضيف مسافة نصية بين الصورة والعنوان في JSX.
-- `<span>` يحيط بعنوان المنتج، و`{item.title}` يدرج القيمة من JavaScript.
-- لو حذفنا شرط `length` ستظهر قائمة فارغة بلا فائدة. لو حذفنا `map` لن تتولد صفوف الاقتراحات. ولو استبدلنا `Link` بعنصر رابط خارجي عادي قد يعاد تحميل التطبيق كاملًا عند الانتقال.
+- الأقواس المعقوفة تسمح بإدخال JavaScript داخل JSX.
+- شرط العرض يتطلب isFresh صحيحة وsuggestions فيها عنصر على الأقل.
+- && تعرض العنصر عند تحقق الشرط.
+- ul قائمة HTML للاقتراحات. absolute يضعها فوق الصفحة بالنسبة إلى الحاوية relative. الأصناف الأخرى تنسق الخلفية والعرض والهامش والإطار وطبقة الظهور.
+- map تمر على كل منتج وتبني صفًا.
+- item هو المنتج الحالي في الدورة.
+- Link رابط داخلي ينقل إلى تفاصيل المنتج، مثل /products/12 عند id يساوي 12.
+- key={item.id} يعطي React معرفًا ثابتًا لكل عنصر في القائمة.
+- onClick قبل التنقل يسجل نص البحث في submittedTerm ويبطل الطلب ويمسح الاقتراحات. تحديث submittedTerm يجعل effect ينظف التشغيل السابق، والشرط داخله يمنع طلبًا جديدًا لنفس النص.
+- li يمثل صف الاقتراح.
+- img تعرض أول صورة من item.images. src رابط الصورة وalt وصف بديل بعنوان المنتج.
+- {" "} يضيف مسافة نصية بين الصورة والعنوان.
+- span يعرض item.title.
+- الضغط على المنتج يظل ينقل إلى التفاصيل، لكن القائمة تمسح قبل التنقل ولا يعيد طلب قديم إظهارها.
 
 ## رسالة عدم وجود اقتراحات
 
-```jsx
-{hasSearched && serachTerm.trim() && suggestions.length === 0 && (
+~~~jsx
+{isFresh && serachTerm.trim() && suggestions.length === 0 && (
   <p className="absolute bg-white w-full p-3! border border-border z-50">
     No suggestions found.
   </p>
 )}
-```
-
-- الشرط يتطلب تحقق ثلاثة أشياء معًا:
-  1. `hasSearched` صحيحة، أي أن الطلب وصل إلى مسار النجاح وحدّث الحالة.
-  2. `serachTerm.trim()` غير فارغة.
-  3. `suggestions.length === 0`، أي أن البحث الناجح لم يرجع اقتراحات.
-- `&&` تربط الشروط؛ إذا فشل شرط واحد فلا تظهر الفقرة.
-- `<p>` تعرض الرسالة، وأصنافها تضعها في موضع مطلق أسفل الحقل تقريبًا وتنسق خلفيتها وحدودها وطبقتها.
-- النص الثابت هو `No suggestions found.`.
-- وجود `hasSearched` يمنع إظهار الرسالة عند أول render، لأن القائمة تبدأ فارغة لكن لم يكتمل بحث بعد.
-
-### مشكلة بقاء الرسالة بعد الانتقال
-
-السبب أن `serachTerm` قد يظل محتفظًا بالنص، بينما القائمة تكون فارغة و`hasSearched` كانت صحيحة بعد بحث لم يجد اقتراحات. إذا لم تُمسح `hasSearched` عند التنقل، تظل الشروط الثلاثة صحيحة، فتظل الرسالة ظاهرة.
-
-في الكود الحالي عولج ذلك في موضعين:
-
-- عند إرسال النموذج، `setHasSearched(false)` و`setSuggestions([])` ينظفان نتيجة الاقتراحات قبل الانتقال.
-- أثر `[location]` يعيد `hasSearched` إلى `false` ويمسح الاقتراحات عندما يتغير الموقع، مثل الانتقال إلى `/search?query=phone`.
-- `onChange` يعيد `hasSearched` إلى `false` عند تعديل العبارة، حتى لا يرى المستخدم رسالة قديمة بينما يبحث عن كلمة جديدة.
-
-هذا هو السلوك المقصود من الكود الحالي. توجد ملاحظة تقنية: تحديث state مباشرة داخل أثر `location` قد يطلق تحذير ESLint الخاص بـ`react-hooks/set-state-in-effect` في إعدادات المشروع. ذلك التحذير لا يعني أن JSX غير صالح، لكنه يشير إلى نمط تحديث قد ينتج render إضافيًا؛ ينبغي التحقق من نص التحذير نفسه عند ظهوره. لم نعدّل هذا الأثر في هذا الملف التوثيقي.
-
-## إغلاق JSX وتصدير المكوّن
-
-```jsx
-    </div>
-  );
-}
-```
-
-- `</div>` يغلق الحاوية التي تضم النموذج والاقتراحات والرسالة.
-- `);` ينهي التعبير الذي أعادته الدالة.
-- `}` يغلق جسم مكوّن `SerachBox`.
-
-```jsx
-export default SerachBox;
-```
-
-يصدر المكوّن كـ default export. يسمح ذلك لملف آخر باستيراده مثل `import SerachBox from "./SerachBox"`. حذف التصدير يمنع بقية التطبيق من استيراده بهذه الطريقة.
-
-## شرح المفاهيم المطلوبة باختصار مترابط
-
-### `useState`
-
-يخزن قيمة بين عمليات الرسم. في هذا المكوّن لدينا ثلاث حالات: نص البحث، الاقتراحات، وهل انتهى البحث. نحدّثها عبر دوال setter، ولا نعدل المتغيرات مباشرة.
-
-### `useEffect`
-
-يشغل عملًا جانبيًا بعد الرسم. الأثر الأول يعتمد على `serachTerm` لجلب الاقتراحات، والثاني يعتمد على `location` لمسح واجهة الاقتراحات بعد التنقل. قائمة الاعتماديات تحدد متى يعاد تشغيل الأثر.
-
-### `useNavigate` و`useLocation`
-
-`useNavigate` للانتقال البرمجي إلى صفحة النتائج عند الإرسال. `useLocation` لملاحظة تغير عنوان/مسار التطبيق وتنظيف الحالة المرتبطة بالصفحة السابقة.
-
-### `fetch` و`async/await`
-
-`fetch` يرسل طلب الشبكة ويرجع Promise. `async` تسمح باستخدام `await` لانتظار الرد ثم JSON بالتتابع. `try/catch` يمسك حالات الفشل. نفحص `res.ok` لأن استجابة HTTP مثل 404 لا ترفض Promise من `fetch` تلقائيًا.
-
-### `AbortController`
-
-ينشئ `signal` نمرره إلى `fetch`. يمكن استدعاء `abort()` لإلغاء الطلب القديم عند تغير عبارة البحث أو إزالة المكوّن. نميز `AbortError` عن الخطأ الحقيقي لأنه نتيجة تنظيف مقصودة.
-
-### `setTimeout` و`clearTimeout`
-
-`setTimeout` يؤخر بدء الطلب 300ms كي لا نطلب API مع كل ضغطة سريعة. `clearTimeout` في cleanup يلغي المؤقت القديم إذا تغير النص قبل انتهائه.
-
-### `encodeURIComponent`
-
-يرمز قيمة النص لتكون آمنة كجزء من URL، سواء في طلب الاقتراحات أو عنوان صفحة النتائج. لا يرمز الرابط كاملًا، بل قيمة المعامل فقط.
-
-### JSX وشرط العرض
-
-JSX يصف عناصر React. الأقواس `{}` تسمح بإدراج JavaScript. التعبير `condition && <Element />` يعرض العنصر عند تحقق الشرط، بينما الشرط المركب هنا يختار بين قائمة اقتراحات ورسالة لا نتائج.
-
-### `map` و`Link`
-
-`map` يحول مصفوفة المنتجات إلى مجموعة عناصر واجهة. `Link` يجعل كل اقتراح رابطًا داخليًا إلى تفاصيل المنتج، و`key` يساعد React في تمييز الصفوف.
-
-## رحلة البحث كاملة في GoShop
-
-### مثال: المستخدم يكتب `phone`
-
-1. يبدأ `serachTerm` كنص فارغ، وتبدأ `suggestions` فارغة و`hasSearched` كاذبة.
-2. يكتب المستخدم `phone`. `onChange` يحفظ النص ويمسح حالة اكتمال البحث السابقة.
-3. تغير `serachTerm` يشغل cleanup للأثر السابق: يلغي مؤقته أو طلبه إن وجد.
-4. يبدأ أثر جديد وينشئ `AbortController` ومؤقتًا مدته 300ms.
-5. إذا لم يكتب المستخدم شيئًا جديدًا خلال المدة، يستدعي المؤقت `fetchSuggestions`.
-6. الدالة تتحقق أن النص غير فارغ، وترمزه، ثم تطلب `https://dummyjson.com/products/search?q=phone` مع `signal`.
-7. يفحص الكود `res.ok`، ثم يحول الاستجابة إلى JSON.
-8. يحفظ أول خمسة منتجات في `suggestions` ويجعل `hasSearched` صحيحة.
-9. إذا وصلت منتجات، يظهر dropdown؛ كل منتج يقود إلى `/products/{id}`.
-10. إذا لم تصل منتجات، يظهر `No suggestions found.` لأن البحث انتهى والنص موجود والقائمة فارغة.
-
-### مثال: البحث عن عبارة فيها رمز خاص
-
-إذا كتب المستخدم `a&b`، يرسل المكوّن قيمة مرمزة مثل `a%26b` في URL. بذلك لا يظن المتصفح أن `&b` معامل جديد؛ تظل العبارة كلها قيمة `q` واحدة.
-
-### مثال: إرسال البحث إلى النتائج
-
-إذا ضغط المستخدم زر البحث أو Enter، يعمل `handleSbumit`. يمنع إعادة تحميل الصفحة، ويتأكد أن العبارة ليست فراغًا، ويمسح الاقتراحات ورسالة عدم العثور، ثم يستخدم `navigate` للانتقال مثل `/search?query=phone`. صفحة `SerachResults` تقرأ معامل `query` من الرابط وتطلب نتائج الصفحة. هذه الطلبات منفصلة: اقتراحات الهيدر محدودة بخمسة، وصفحة النتائج تعرض نتائج البحث الخاصة بها.
-
-### مثال: كتابة كلمة جديدة قبل اكتمال الطلب
-
-إذا بدأ طلب `phone` ثم كتب المستخدم `laptop` بسرعة، ينظف React أثر `phone`: يلغي المؤقت إن لم يبدأ، أو يلغي طلب `fetch` إن بدأ. بعدها يبدأ أثر جديد لـ`laptop`. هذا يقلل فرصة عرض نتائج قديمة.
-
-## أسئلة مراجعة وإجاباتها
-
-### 1. لماذا لا نعرض رسالة عدم وجود اقتراحات منذ أول render؟
-
-لأن `hasSearched` تبدأ `false`. القائمة الفارغة في البداية لا تعني أن البحث اكتمل؛ قد لا يكون المستخدم كتب شيئًا بعد.
-
-### 2. ما الفرق بين `serachTerm` و`searchData` في صفحة النتائج؟
-
-`serachTerm` هي عبارة الهيدر التي يكتبها المستخدم وتستخدم للاقتراحات. صفحة النتائج تستخرج `query` من الرابط وتدير نتائجها في حالة مستقلة. الضغط على البحث يربطهما عبر عنوان URL.
-
-### 3. لماذا نستخدم `encodeURIComponent`؟
-
-لمنع رموز كلمة البحث من كسر عنوان URL أو تغيير تفسير معاملاته.
-
-### 4. لماذا نفحص `res.ok`؟
-
-لأن `fetch` قد ينجح في الاتصال بالخادم لكنه يستلم حالة HTTP فاشلة؛ الفحص يحول تلك الحالة إلى مسار خطأ واضح.
-
-### 5. ما الذي يلغي `AbortController`؟
-
-يلغي طلب `fetch` المرتبط بـ`controller.signal` عندما تتغير عبارة البحث أو ينتهي عمر الأثر.
-
-### 6. لماذا نستخدم `setTimeout`؟
-
-لانتظار لحظة قصيرة بعد آخر كتابة قبل الطلب، حتى نقلل عدد طلبات الاقتراحات أثناء الكتابة السريعة.
-
-### 7. ما دور `key={item.id}`؟
-
-يعطي React هوية ثابتة لكل صف في قائمة الاقتراحات عند تحديثها.
-
-### 8. ماذا يحدث عند الضغط على اقتراح؟
-
-ينقل `Link` المستخدم إلى صفحة تفاصيل المنتج وفق المسار `/products/${item.id}`.
-
-### 9. ما الذي يمنع رسالة `No suggestions found.` من الاستمرار بعد التنقل في الكود الحالي؟
-
-أثر `location` يعيد `hasSearched` إلى `false` ويمسح الاقتراحات، كما أن معالج الإرسال يمسح الحالتين قبل `navigate`.
-
-### 10. هل `|| []` يضمن عدم حدوث خطأ لو لم توجد `data.products`؟
-
-ليس في هذا التعبير تحديدًا؛ لأن `data.products.slice(...)` يُنفذ قبل تقييم `||`. لو كانت `products` غير موجودة فسيحدث خطأ. يلزم فحص نوع البيانات قبل استدعاء `slice` إذا أردنا حماية أقوى.
-
-### 11. هل `console.log` يعرض رسالة الخطأ للمستخدم؟
-
-لا. يطبعها في أدوات المطور فقط، بينما الواجهة الحالية لا تعرض نص خطأ الشبكة للمستخدم.
-
-## أهم المفاهيم التي ينبغي تذكرها
-
-- الحالة هي ذاكرة المكوّن؛ التغيير يكون عبر setter مثل `setSuggestions`.
-- `useEffect` مناسب لطلب البيانات ومتابعة تغيّر المسار، وقائمة الاعتماديات تحدد وقت إعادة تشغيله.
-- طلب الاقتراحات مؤجل 300ms ويمكن إلغاء المؤقت والطلب القديمين.
-- نجاح الطلب لا يساوي وجود نتائج: `hasSearched` يحدد اكتمال البحث و` suggestions.length` يحدد وجود منتجات.
-- `encodeURIComponent` يحمي قيمة البحث داخل الرابط.
-- `Link` للتنقل الداخلي إلى المنتج، و`navigate` للتنقل البرمجي إلى صفحة نتائج البحث.
-- رسالة عدم العثور تظهر بعد بحث مكتمل بلا اقتراحات، وتختفي عند الكتابة أو إرسال البحث أو الانتقال.
-- الكود الحالي يفترض أن `data.products` موجودة كمصفوفة، ولا يعرض رسالة خطأ شبكة للمستخدم. هذه ملاحظات على السلوك الحالي وليست تغييرات مطبقة.
+~~~
+
+- isFresh تعني أن hasSearched صحيحة.
+- serachTerm.trim() يمنع الرسالة لو الحقل فارغ أو فيه مسافات فقط.
+- suggestions.length === 0 يعني أن البحث الناجح لم يرجع عناصر.
+- يلزم تحقق الشروط الثلاثة معًا.
+- p تعرض الرسالة، والأصناف تضعها في صندوق منسق تحت الحقل.
+- عند Enter أو اختيار منتج تجعل invalidateSuggestions hasSearched false، فلا تظهر الرسالة في صفحة النتائج أو التفاصيل.
+- عند فشل الطلب، لا يجعل catch hasSearched true، فلا يخلط بين فشل الشبكة وبين بحث ناجح بلا اقتراحات.
+
+## رحلات عملية داخل GoShop
+
+### من كتابة أول حرف إلى ظهور النتائج
+
+1. المستخدم يكتب H.
+2. onChange تحفظ H، تمسح submittedTerm وتستدعي invalidateSuggestions.
+3. عداد requestIdRef يزيد فتُبطل أي نتيجة قديمة، والاقتراحات القديمة تُمسح.
+4. تغير serachTerm يجعل React يشغل effect جديدًا؛ ينظف المؤقت/الطلب السابق.
+5. effect يزيد عداد الطلب وينشئ controller ويضبط مؤقت 300ms.
+6. لو كتب المستخدم P قبل انتهاء المؤقت، cleanup يلغي مؤقت H. يبدأ تشغيل جديد لعبارة HP.
+7. بعد توقفه 300ms، fetchSuggestions تطلب المنتجات المطابقة لـHP من DummyJSON.
+8. عند النجاح، يتحقق requestId أن هذا ما زال أحدث طلب، ثم يحفظ أول خمسة منتجات ويجعل hasSearched true.
+9. JSX يعرض القائمة لأن isFresh صحيحة وطول suggestions أكبر من صفر.
+
+### الانتقال من Shop إلى Home مع بقاء كلمة البحث
+
+1. يكتب المستخدم HP في صفحة Shop، فتُحفظ الاقتراحات بعد نجاح الطلب.
+2. TopHeader وSerachBox مستمران لأن الهيدر موضوع خارج Routes في App.
+3. الانتقال إلى Home لا يغير serachTerm ولا submittedTerm؛ لذلك effect لا يعيد طلب الاقتراحات.
+4. لا توجد مقارنة location.key، وisFresh تظل true. النص والاقتراحات يظلان ظاهرين في Home.
+5. لو لم توجد اقتراحات، تظهر رسالة عدم العثور فقط إذا كان الطلب قد نجح وhasSearched true.
+
+### الضغط على Enter أو زر العدسة
+
+1. يرسل المستخدم العبارة الحالية.
+2. handleSbumit يمنع إعادة التحميل وينظف النص بـtrim.
+3. عند وجود نص، setSubmittedTerm تحفظه وinvalidateSuggestions تزيد رقم الطلب، وتمسح القائمة وتجعل hasSearched false.
+4. navigate يفتح /search?query=...
+5. تغير submittedTerm يعيد effect؛ بعد التأخير يرى شرط التطابق بين النص وsubmittedTerm، فيخرج من دون طلب اقتراحات لنفس العبارة.
+6. isFresh false، لذلك الاقتراحات لا تظهر مرة أخرى على صفحة النتائج.
+7. صفحة SerachResults تجلب نتائج الصفحة بشكل مستقل.
+
+### اختيار منتج من القائمة
+
+1. المستخدم يضغط اقتراحًا.
+2. onClick يسجل نص الحقل في submittedTerm ويستدعي invalidateSuggestions.
+3. القائمة تمسح فورًا، ويتقدم عداد الطلب لإبطال أي رد قديم.
+4. Link ينتقل إلى /products/{id}.
+5. effect الناتج عن submittedTerm لا يجلب اقتراحات لهذا النص.
+6. صفحة تفاصيل المنتج تظهر، ولا تعود القائمة للظهور.
+
+### منع رد قديم من تحديث القائمة
+
+افترض أن طلب HP رقمه 3، ثم المستخدم غيّر النص وبدأ طلب HTML رقمه 5. لو رجع HP متأخرًا، سيقارن الكود requestId المحلي 3 بالعداد الحالي 5. لأنهما مختلفان، ينفذ return ولا يحدث suggestions. AbortController يحاول إلغاء الطلب، ورقم الطلب يحمي الواجهة حتى لو وصل رد قديم قرب الإلغاء.
+
+## معاني المصطلحات
+
+- **Hook:** وظيفة من React تضيف للمكوّن سلوكًا مثل الحالة أو الآثار الجانبية.
+- **State:** بيانات المكوّن التي يؤدي تحديثها إلى إعادة الرسم.
+- **Ref:** حاوية تحتفظ بقيمة في current بين عمليات الرسم، وتغييرها وحده لا يعيد الرسم.
+- **Render:** حساب React لشكل الواجهة المطلوب عرضه.
+- **Effect:** عمل جانبي بعد render، مثل طلب HTTP.
+- **Dependency array:** مصفوفة تحدد القيم التي يؤدي تغيرها إلى تشغيل effect من جديد.
+- **Cleanup:** دالة ينفذها React لتنظيف effect السابق.
+- **Promise:** تمثيل لعملية غير متزامنة ستنجح لاحقًا أو تفشل.
+- **async/await:** صياغة لترتيب انتظار العمليات غير المتزامنة بطريقة مقروءة.
+- **HTTP response:** رد الخادم على طلب الشبكة، ويضم حالة مثل 200 أو 404 وجسم البيانات.
+- **API:** واجهة يطلب التطبيق عبرها بيانات من خدمة أخرى.
+- **Stale/قديمة:** نتيجة طلب لم تعد تخص النص الحالي أو لم تعد مطلوبة.
+- **Debounce:** تأخير قصير حتى يتوقف المستخدم عن الكتابة قبل تنفيذ الطلب؛ هنا 300ms مع إلغاء المؤقت السابق.
+- **JSX:** صياغة تشبه HTML نكتب بها واجهة React داخل JavaScript.
+- **Conditional rendering:** عرض عنصر فقط إذا تحقق شرط.
+- **map:** دالة مصفوفة تنشئ قيمة مقابلة لكل عنصر، وهنا عنصر واجهة لكل منتج.
+- **Route:** مسار في التطبيق يحدد الصفحة التي تعرضها React Router.
+
+## خلاصة
+
+useState تحفظ نص البحث والاقتراحات وحالة نجاحها والعبارة المعالجة. useRef يحمل رقم الطلب من غير renders إضافية. invalidateSuggestions تمسح الاقتراحات وتبطل الطلب الجاري. useEffect يؤخر الطلب ويجلب البيانات ويلغي المؤقت والطلب عند تغير الاعتماديات. requestId يمنع الرد القديم من تعديل الحالة. isFresh الآن تعني hasSearched فقط، لذلك التنقل العادي إلى Home لا يخفي الاقتراحات. أما Enter واختيار المنتج فيبطلانها صراحةً قبل الانتقال. لم يتغير التصميم أو الكلاسات في هذا الشرح، ولم يعدّل هذا الملف أي كود.

@@ -4,63 +4,63 @@ import SlideProduct from "../../conponents/slideProducts/SlideProduct";
 import SlideProductLoading from "../../conponents/slideProducts/SlideProductLoading";
 import PageTransition from "../../conponents/PageTransition";
 
-const categories = [
-  "beauty",
-  "fragrances",
-  "furniture",
-  "groceries",
-  "home-decoration",
-  "kitchen-accessories",
-  "laptops",
-  "mens-shirts",
-  "mens-shoes",
-  "mens-watches",
-  "mobile-accessories",
-  "motorcycle",
-  "skin-care",
-  "smartphones",
-  "sports-accessories",
-  "sunglasses",
-  "tablets",
-  "tops",
-  "vehicle",
-  "womens-bags",
-  "womens-dresses",
-  "womens-jewellery",
-  "womens-shoes",
-  "womens-watches",
-];
-
 function Home() {
+  const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const fetchProducts = async () => {
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    async function load() {
       try {
+        const categoriesRes = await fetch(
+          "https://dummyjson.com/products/categories",
+          { signal },
+        );
+
+        if (!categoriesRes.ok) {
+          throw new Error("Failed to load categories");
+        }
+
+        const list = await categoriesRes.json();
+
+        if (!Array.isArray(list)) {
+          throw new Error("Invalid categories data");
+        }
+
+        setCategories(list);
+
         const results = await Promise.all(
-          categories.map(async (category) => {
+          list.map(async ({ slug }) => {
             try {
               const res = await fetch(
-                `https://dummyjson.com/products/category/${category}`,
+                `https://dummyjson.com/products/category/${encodeURIComponent(slug)}`,
+                { signal },
               );
 
               if (!res.ok) {
-                throw new Error(`فشل تحميل تصنيف ${category}`);
+                throw new Error("Failed to load products");
               }
 
               const data = await res.json();
 
               return [
-                category,
+                slug,
                 {
                   items: Array.isArray(data.products) ? data.products : [],
                   error: "",
                 },
               ];
-            } catch {
+            } catch (requestError) {
+              if (requestError.name === "AbortError") {
+                throw requestError;
+              }
+
               return [
-                category,
+                slug,
                 {
                   items: [],
                   error: "تعذر تحميل منتجات هذا التصنيف.",
@@ -71,12 +71,20 @@ function Home() {
         );
 
         setProducts(Object.fromEntries(results));
+      } catch (loadError) {
+        if (loadError.name !== "AbortError") {
+          setError("تعذر تحميل التصنيفات. تحقق من اتصال الإنترنت.");
+        }
       } finally {
-        setLoading(false);
+        if (!signal.aborted) {
+          setLoading(false);
+        }
       }
-    };
+    }
 
-    fetchProducts();
+    load();
+
+    return () => controller.abort();
   }, []);
 
   return (
@@ -84,21 +92,27 @@ function Home() {
       <div>
         <HeroSlider />
 
-        {loading
-          ? categories.map((category) => <SlideProductLoading key={category} />)
-          : // لو الموقع واقف دي اللي هيظهر
+        {loading ? (
+          categories.map((category) => (
+            <SlideProductLoading key={category.slug} />
+            // لو الموقع واقف دي اللي هيظهر
             // اللي هتظهر Loading لو البيانات حملت الكود اللي تحت هيظهر ولو البيانات محملتش الكلمه دي
-            categories.map((category) => (
-              <SlideProduct
-                key={category}
-                data={products[category]?.items ?? []}
-                // دي يعني اسامي المنتجات category .دي يعني كل المنتجات اللي اضافت بتفاصيل products
-                // يعني كل منتج هيكون موجود اسم المنتج هيكون موجود فوق
-                error={products[category]?.error}
-                title={category.replace("-", " ")}
-                // دا بيجيب كل الاسم بتاع كل منتج
-              />
-            ))}
+          ))
+        ) : error ? (
+          <p className="py-10! text-center text-red-500!">{error}</p>
+        ) : (
+          categories.map(({ slug, name }) => (
+            <SlideProduct
+              key={slug}
+              data={products[slug]?.items ?? []}
+              // دي يعني اسامي المنتجات category .دي يعني كل المنتجات اللي اضافت بتفاصيل products
+              //يعني كل منتج هيكون موجود اسم المنتج هيكون موجود فوق
+              error={products[slug]?.error}
+              title={name}
+              // دا بيجيب كل الاسم بتاع كل منتج
+            />
+          ))
+        )}
       </div>
     </PageTransition>
   );

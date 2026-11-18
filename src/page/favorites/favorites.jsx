@@ -1,9 +1,9 @@
 import { useContext } from "react";
-import { CartContext } from "../../conponents/context/CartContext";
+import { CartContext } from "../../conponents/context/CartContextValue";
 import PageTransition from "../../conponents/PageTransition";
 import Product from "../../conponents/slideProducts/Product";
 
-function favorites() {
+function Favorites() {
   const { favorites } = useContext(CartContext);
   return (
     <PageTransition>
@@ -33,4 +33,4 @@ function favorites() {
   );
 }
 
-export default favorites;
+export default Favorites;

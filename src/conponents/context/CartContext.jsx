@@ -1,15 +1,47 @@
-import { createContext, useState, useEffect } from "react";
-//الدالة اللي بتعمل بيها "صندوق بيانات مشترك" بين كل المكونات - createContext بتستورد
+import { useState, useEffect } from "react";
+import { CartContext } from "../../conponents/context/CartContextValue";
 
-export const CartContext = createContext();
-// تاني محتاج يوصل لبيانات الكارت component معناها إنك هتقدر تستورده في أي CartContext. export هنا بتعمل الصندوق نفسه، واسمه
+
+
+const isValidFavorite = (item) =>
+  item !== null &&
+  typeof item === "object" &&
+  item.id !== undefined &&
+  item.id !== null &&
+  typeof item.title === "string" &&
+  Array.isArray(item.images) &&
+  typeof item.images[0] === "string" &&
+  Number.isFinite(item.price) &&
+  Number.isFinite(item.rating) &&
+  Number.isFinite(item.discountPercentage);
+
+const isValidCartItem = (item) =>
+  isValidFavorite(item) && Number.isFinite(item.quantity) && item.quantity >= 1;
+
+const readSavedList = (key, isValidItem) => {
+  try {
+    const saved = localStorage.getItem(key);
+
+    if (!saved) {
+      return [];
+    }
+
+    const parsed = JSON.parse(saved);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.every(isValidItem) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
 
 function CartProvider({ children }) {
-  // Favorites
-  const [favorites, setFavorites] = useState(() => {
-    const savedFav = localStorage.getItem("favoritesItems");
-    return savedFav ? JSON.parse(savedFav) : [];
-  });
+  const [favorites, setFavorites] = useState(() =>
+    readSavedList("favoritesItems", isValidFavorite),
+  );
 
   const addTofavorites = (item) => {
     setFavorites((prevItems) => {
@@ -36,13 +68,18 @@ function CartProvider({ children }) {
   };
 
   // cart
-  const [cartItems, setCartItems] = useState(() => {
-    const savedCart = localStorage.getItem("cartItems");
-    return savedCart ? JSON.parse(savedCart) : [];
-    // لو موجوده برجع لك  localStorage بتاعها او موجوده تجيب لي الحاجات اللي في localStorage
-    // localStorage دي في getItem("cartItems") يعني لو لقيت true بس بشرط لو
-  });
-  // فاضيه Array ولو مش موجوده برجع لك  localStorage بتاعها او موجوده تجيب لي الحاجات اللي في localStorage انا مش عاوزه فاضيه انا عاوزه تعمل اتشك تشوف  useState([]) في
+  // const [cartItems, setCartItems] = useState(() => {
+    //   const savedCart = localStorage.getItem("cartItems");
+    //   return savedCart ? JSON.parse(savedCart) : [];
+    //   // لو موجوده برجع لك  localStorage بتاعها او موجوده تجيب لي الحاجات اللي في localStorage
+    //   // localStorage دي في getItem("cartItems") يعني لو لقيت true بس بشرط لو
+    // });
+    // فاضيه Array ولو مش موجوده برجع لك  localStorage بتاعها او موجوده تجيب لي الحاجات اللي في localStorage انا مش عاوزه فاضيه انا عاوزه تعمل اتشك تشوف  useState([]) في
+    
+    // cart
+  const [cartItems, setCartItems] = useState(() =>
+    readSavedList("cartItems", isValidCartItem),
+  );
 
   // increaseQuantity
   const increaseQuantity = (id) => {
@@ -53,7 +90,7 @@ function CartProvider({ children }) {
     );
   };
 
-  // derreaseQuantity
+  // decreaseQuantity
   const decreaseQuantity = (id) => {
     setCartItems((prevItems) =>
       prevItems.map((item) => {

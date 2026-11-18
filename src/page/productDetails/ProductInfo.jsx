@@ -9,7 +9,7 @@ import {
   FaArrowRotateLeft,
 } from "react-icons/fa6";
 import { FaCartArrowDown, FaRegHeart } from "react-icons/fa";
-import { CartContext } from "../../conponents/context/CartContext";
+import { CartContext } from "../../conponents/context/CartContextValue";
 import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 

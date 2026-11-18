@@ -11,6 +11,8 @@ function BtmHeader() {
   const location = useLocation();
 
   const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesError, setCategoriesError] = useState("");
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -23,17 +25,49 @@ function BtmHeader() {
     { title: "Contact", link: "/contact" },
   ];
 
-  useEffect(() => {
+  const closeMenus = () => {
     setIsCategoryOpen(false);
     setIsMobileMenuOpen(false);
-  }, [location.pathname]);
+  };
 
   useEffect(() => {
-    fetch("https://dummyjson.com/products/categories")
-      .then((res) => res.json())
-      .then((data) => {
+    const controller = new AbortController();
+
+    async function loadCategories() {
+      try {
+        setCategoriesLoading(true);
+        setCategoriesError("");
+
+        const res = await fetch("https://dummyjson.com/products/categories", {
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          throw new Error("فشل تحميل التصنيفات.");
+        }
+
+        const data = await res.json();
+
+        if (!Array.isArray(data)) {
+          throw new Error("بيانات التصنيفات غير صالحة.");
+        }
+
         setCategories(data);
-      });
+      } catch (error) {
+        if (error.name === "AbortError") return;
+
+        setCategoriesError("تعذر تحميل التصنيفات. تحقق من اتصال الإنترنت.");
+        setCategories([]);
+      } finally {
+        if (!controller.signal.aborted) {
+          setCategoriesLoading(false);
+        }
+      }
+    }
+
+    loadCategories();
+
+    return () => controller.abort();
   }, []);
 
   return (
@@ -90,23 +124,24 @@ function BtmHeader() {
                   }
                 `}
               >
-                {categories.map((category) => {
-                  return (
+                {categoriesLoading ? (
+                  <p className="p-3! text-sm">جاري تحميل التصنيفات...</p>
+                ) : categoriesError ? (
+                  <p className="p-3! text-sm text-red-500!">
+                    {categoriesError}
+                  </p>
+                ) : (
+                  categories.map((category) => (
                     <Link
-                      className="
-                        py-3.75! px-2.5!
-                        border border-border border-b-0
-                        hover:bg-main
-                        hover:text-white
-                        transition-all duration-300
-                      "
                       key={category.slug}
                       to={`/category/${category.slug}`}
+                      onClick={closeMenus}
+                      className="py-3! px-2.5! border border-border border-b-0 hover:bg-main hover:text-white transition-all duration-300"
                     >
                       {category.name}
                     </Link>
-                  );
-                })}
+                  ))
+                )}
               </div>
             </div>
 
@@ -130,6 +165,7 @@ function BtmHeader() {
                         transition-all duration-300
                         whitespace-nowrap
                       "
+                      onClick={closeMenus}
                       to={item.link}
                     >
                       {item.title}
@@ -149,7 +185,11 @@ function BtmHeader() {
               shrink-0
             "
           >
-            <Link to="/signin" className="flex items-center whitespace-nowrap">
+            <Link
+              to="/signin"
+              onClick={closeMenus}
+              className="flex items-center whitespace-nowrap"
+            >
               <PiSignInBold
                 className="
                   text-xl
@@ -172,6 +212,7 @@ function BtmHeader() {
 
             <Link
               to="/register"
+              onClick={closeMenus}
               className="flex items-center whitespace-nowrap"
             >
               <FaUserPlus
@@ -269,23 +310,24 @@ function BtmHeader() {
                   }
                 `}
               >
-                {categories.map((category) => {
-                  return (
+                {categoriesLoading ? (
+                  <p className="p-3! text-sm">جاري تحميل التصنيفات...</p>
+                ) : categoriesError ? (
+                  <p className="p-3! text-sm text-red-500!">
+                    {categoriesError}
+                  </p>
+                ) : (
+                  categories.map((category) => (
                     <Link
-                      className="
-                        py-3! px-2.5!
-                        border border-border border-b-0
-                        hover:bg-main
-                        hover:text-white
-                        transition-all duration-300
-                      "
                       key={category.slug}
                       to={`/category/${category.slug}`}
+                      onClick={closeMenus}
+                      className="py-3! px-2.5! border border-border border-b-0 hover:bg-main hover:text-white transition-all duration-300"
                     >
                       {category.name}
                     </Link>
-                  );
-                })}
+                  ))
+                )}
               </div>
             </div>
 
@@ -323,6 +365,7 @@ function BtmHeader() {
                 return (
                   <Link
                     key={item.title}
+                    onClick={closeMenus}
                     to={item.link}
                     className={`
                       py-3! px-3!
@@ -352,6 +395,7 @@ function BtmHeader() {
             >
               <Link
                 to="/signin"
+                onClick={closeMenus}
                 className="
                   flex items-center
                   gap-2
@@ -367,6 +411,7 @@ function BtmHeader() {
 
               <Link
                 to="/register"
+                onClick={closeMenus}
                 className="flex items-center gap-2
                   text-white!
                   hover:text-main

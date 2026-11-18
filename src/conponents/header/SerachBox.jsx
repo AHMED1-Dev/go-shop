@@ -1,32 +1,45 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FaSearch } from "react-icons/fa";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
-function SerachBox() {
+function SerachBox() {  
   const [serachTerm, setSerachTerm] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [submittedTerm, setSubmittedTerm] = useState("");
   const navigate = useNavigate();
-  const location = useLocation();
+  const requestIdRef = useRef(0);
+
+  const isFresh = hasSearched;
+
+  const invalidateSuggestions = () => {
+    requestIdRef.current += 1;
+    setSuggestions([]);
+    setHasSearched(false);
+  };
 
   const handleSbumit = (e) => {
     e.preventDefault();
 
-    if (serachTerm.trim()) {
-      setHasSearched(false);
-      setSuggestions([]);
-      navigate(`/search?query=${encodeURIComponent(serachTerm.trim())}`);
+    const term = serachTerm.trim();
+
+    if (term) {
+      setSubmittedTerm(term);
+      invalidateSuggestions();
+      navigate(`/search?query=${encodeURIComponent(term)}`);
     }
   };
 
   useEffect(() => {
+    const requestId = ++requestIdRef.current;
+    // رقم يميز طلب البحث الحالي
     const controller = new AbortController();
-    // بيسمح بإلغاء طلب البحث القديم لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
+    // Effect وسيلة لإلغاء طلب الشبكة السابق عند تنظيف الـ
 
     const fetchSuggestions = async () => {
-      if (!serachTerm.trim()) {
+      if (!serachTerm.trim() || serachTerm.trim() === submittedTerm) {
         setSuggestions([]);
-        setHasSearched(false); // لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
+        setHasSearched(false);
         return;
       }
 
@@ -37,7 +50,6 @@ function SerachBox() {
           )}`,
           {
             signal: controller.signal,
-            // علشان يكون قابلًا للإلغاء fetch بنمرره إلى :signal
           },
         );
 
@@ -47,11 +59,13 @@ function SerachBox() {
 
         const data = await res.json();
 
-        setSuggestions(data.products.slice(0, 5) || []);
-        // علشان انا لما ابحث علي منتج لو المنتج اللي انا ببحث عليها في 10 منتجات انا مش عاوز يظهر ال10 منتجات انا عاوز يظهر 5 بس slice(0, 5) انا عملت
-        setHasSearched(true); // لما المستخدم يكتب كلمة جديدة أو يخرج من المكوّن.
+        if (requestId !== requestIdRef.current) return;
+        // لو الطلب اللي رجع مش هو الطلب الحالي، تجاهل النتيجة وما تحدّثش الاقتراحات
+
+        setSuggestions(data.products?.slice(0, 5) || []);
+        setHasSearched(true);
       } catch (error) {
-        if (error.name !== "AbortError") {
+        if (error.name !== "AbortError" && requestId === requestIdRef.current) {
           console.log("Search Error:", error);
           setSuggestions([]);
         }
@@ -65,19 +79,14 @@ function SerachBox() {
     return () => {
       clearTimeout(timeoutId);
       controller.abort();
-      // Effect بيلغي الطلب السابق عند تشغيل تنظيف الـ
-    };
-  }, [serachTerm]);
-
-  useEffect(() => {
-    setSuggestions([]);
-    setHasSearched(false);
-  }, [location]);
-  // الفكرة: "لما المستخدم ينتقل من صفحة لصفحة تانية (أو حتى يعمل بحث جديد)، اقفل/امسح قائمة اقتراحات البحث المنسدلة تلقائيًا."
+      if (requestId === requestIdRef.current) {
+        requestIdRef.current += 1;
+      }
+    }; // ويلغي طلب الشبكة، ويبطل صلاحية الطلب لو لسه هو الطلب الحالي timeout وده بيعمل تنظيف للـ
+  }, [serachTerm, submittedTerm]);
 
   return (
     <div className="relative">
-      {/* search_form */}
       <form
         onSubmit={handleSbumit}
         className="flex items-center bg-bg rounded-4xl border border-main"
@@ -90,7 +99,8 @@ function SerachBox() {
           placeholder="Search For Products"
           onChange={(e) => {
             setSerachTerm(e.target.value);
-            setHasSearched(false);
+            setSubmittedTerm("");
+            invalidateSuggestions();
           }}
           autoComplete="off"
         />
@@ -101,10 +111,18 @@ function SerachBox() {
           <FaSearch className="text-white" />
         </button>
       </form>
-      {suggestions.length > 0 && (
+
+      {isFresh && suggestions.length > 0 && (
         <ul className="absolute bg-white w-full! list-none mt-1! border border-border z-50">
           {suggestions.map((item) => (
-            <Link key={item.id} to={`/products/${item.id}`}>
+            <Link
+              key={item.id}
+              to={`/products/${item.id}`}
+              onClick={() => {
+                setSubmittedTerm(serachTerm.trim());
+                invalidateSuggestions();
+              }}
+            >
               <li className=" flex items-center gap-2 py-1! px-2! border-b border-border">
                 <img
                   className="w-10! h-10 object-contain"
@@ -118,7 +136,7 @@ function SerachBox() {
         </ul>
       )}
 
-      {hasSearched && serachTerm.trim() && suggestions.length === 0 && (
+      {isFresh && serachTerm.trim() && suggestions.length === 0 && (
         <p className="absolute bg-white w-full p-3! border border-border z-50">
           No suggestions found.
         </p>

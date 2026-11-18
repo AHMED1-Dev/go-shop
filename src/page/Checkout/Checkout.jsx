@@ -1,6 +1,6 @@
 import { useContext, useState } from "react";
 import { Link } from "react-router-dom";
-import { CartContext } from "../../conponents/context/CartContext";
+import { CartContext } from "../../conponents/context/CartContextValue";
 import FormField from "../../conponents/FormField";
 import { useForm } from "../../conponents/useForm";
 import { required, phone, minLength } from "../../conponents/validators";

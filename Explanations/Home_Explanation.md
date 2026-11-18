@@ -10,6 +10,13 @@
 
 لم يتم تعديل ملفات المصدر أثناء إعداد هذا الشرح.
 
+## سجل البند 9: مصادر التصنيفات — Resolved
+
+كانت Home تستخدم قائمة ثابتة من 24 slug، بينما BtmHeader يجلب التصنيفات من https://dummyjson.com/products/categories. أصبحت Home تجلب القائمة من نقطة API نفسها، ثم تطلب منتجات كل تصنيف باستخدام slug وتعرض العنوان من name. BtmHeader لم يتغير ضمن هذا البند.
+
+أكد المستخدم نجاح ESLint، وتحميل الأقسام بترتيب API على Slow 3G، وظهور رسالة فشل التصنيفات أثناء Offline ثم عودة الأقسام بعد استعادة الاتصال، وعزل فشل طلب Beauty عن بقية الأقسام، وعدم ظهور أخطاء من المشروع في Console بعد مغادرة الصفحة سريعًا على Slow 3G. لم يتأكد بصريًا من ظهور skeletons. طلب قائمة التصنيفات أصبح طلبًا إضافيًا مستقلًا، والأقسام ما زالت تنتظر أبطأ طلب منتجات بسبب Promise.all (البند 14). مظهر رسالة خطأ القسم وتحذير Swiper Loop Warning لم يتضح سببهما أو تاريخهما، ورسالة A listener indicated an asynchronous response... يُرجّح أنها من إضافة متصفح لكن المصدر غير مؤكد.
+قواعد Request Blocking التي استُخدمت أثناء الاختبار أُزيلت، وأُعيد إعداد Throttling إلى No throttling بعد انتهاء الاختبار.
+
 ## خريطة المكونات
 
 ~~~text
@@ -23,7 +30,7 @@ Home
                 └── Product لكل منتج
 ~~~
 
-Home هي المكوّن الأب: تجلب المنتجات وتدير حالة التحميل وتختار ما يظهر. HeroSlider يعرض محتوى ترويجيًا. SlideProductLoading يعرض شكل تحميل مؤقتًا. SlideProduct يعرض تصنيفًا واحدًا ومنتجاته أو رسالة خطئه. PageTransition يلف الصفحة ويضيف الحركة.
+Home هي المكوّن الأب: تجلب قائمة التصنيفات أولًا، ثم منتجاتها، وتدير حالات التصنيفات والتحميل والخطأ والمنتجات. HeroSlider يعرض محتوى ترويجيًا. بعد وصول قائمة التصنيفات، يعرض SlideProductLoading هيكلًا لكل تصنيف أثناء طلب المنتجات. بعد اكتمال الطلبات، يعرض SlideProduct كل تصنيف ومنتجاته أو رسالة خطئه. PageTransition يلف الصفحة ويضيف الحركة.
 
 # 1. Home.jsx
 
@@ -40,62 +47,28 @@ import PageTransition from "../../conponents/PageTransition";
 ~~~
 
 - useState وuseEffect دالتان من React، وهما Hooks. الـHook دالة توفر للمكوّن الدالي وظيفة من React.
-- useState تحفظ حالة قد تتغير؛ هنا تحفظ بيانات المنتجات وحالة التحميل.
-- useEffect تشغّل أثرًا جانبيًا بعد العرض؛ طلب الشبكة مثال على أثر جانبي.
-- بقية الأسطر تستورد المكونات التي تستخدمها Home.
+- useState تحفظ حالة قد تتغير؛ Home تستخدمها لقائمة التصنيفات والمنتجات وحالة التحميل وخطأ تحميل القائمة.
+- useEffect تشغّل أثرًا جانبيًا بعد العرض؛ طلبات الشبكة مثال على أثر جانبي.
+- بقية الأسطر تستورد المكونات المستخدمة في الصفحة.
 - ../.. تعني الرجوع من مجلد Home إلى src ثم الدخول إلى conponents. اسم المجلد مكتوب conponents في المشروع، لذلك يجب أن يطابقه المسار.
 
-## قائمة التصنيفات
+## تعريف Home والحالات
 
-~~~jsx
-const categories = [
-  "beauty",
-  "fragrances",
-  "furniture",
-  "groceries",
-  "home-decoration",
-  "kitchen-accessories",
-  "laptops",
-  "mens-shirts",
-  "mens-shoes",
-  "mens-watches",
-  "mobile-accessories",
-  "motorcycle",
-  "skin-care",
-  "smartphones",
-  "sports-accessories",
-  "sunglasses",
-  "tablets",
-  "tops",
-  "vehicle",
-  "womens-bags",
-  "womens-dresses",
-  "womens-jewellery",
-  "womens-shoes",
-  "womens-watches",
-];
 ~~~
-
-const تعرّف متغيرًا لا نعيد إسناد قيمة جديدة له. categories مصفوفة من 24 اسم تصنيف، بصيغة slug التي يستخدمها API. مثال: beauty يقابل الرابط https://dummyjson.com/products/category/beauty.
-
-القائمة نفسها تغذي ثلاث عمليات: بدء طلب لكل تصنيف، عرض Skeleton لكل تصنيف، وإنشاء قسم منتجات لكل تصنيف. استخدام map على القائمة يجنّب تكرار JSX والمنطق 24 مرة.
-
-## تعريف Home والحالة
-
-~~~jsx
 function Home() {
+  const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 ~~~
 
-function Home يعرّف مكوّن React. المكوّن دالة ترجع JSX وReact تحولها إلى واجهة.
+- function Home يعرّف مكوّن React. المكوّن دالة ترجع JSX وReact تحولها إلى واجهة.
+- categories تبدأ بمصفوفة فارغة، ثم تحفظ فيها قائمة التصنيفات القادمة من API. كل عنصر يتضمن slug وname.
+- products تبدأ بكائن فارغ. بعد اكتمال طلبات المنتجات، يحوي هذا الكائن نتيجة لكل slug.
+- loading تبدأ true؛ وتحدد هل تعرض الصفحة هياكل التحميل أو محتوى الأقسام.
+- error تبدأ نصًا فارغًا، وتستخدم لخطأ جلب قائمة التصنيفات كلها. خطأ تصنيف واحد يُحفظ منفصلًا داخل products.
 
-useState({}) تنشئ حالة ابتدائية فارغة:
-
-- products القيمة الحالية التي يقرأها العرض.
-- setProducts دالة تحديثها. استعمال الدالة يخبر React بإعادة render.
-- لا نعدل products مباشرة؛ فالتغيير المباشر قد لا يجعل React تعرف أن الواجهة تحتاج تحديثًا.
-- بعد التحميل يكون الكائن قريبًا من:
+شكل تقريبي لحالة المنتجات بعد اكتمال الطلبات:
 
 ~~~js
 {
@@ -110,200 +83,183 @@ useState({}) تنشئ حالة ابتدائية فارغة:
 }
 ~~~
 
-لكل تصنيف مفتاح، وداخله items للمنتجات وerror للرسالة.
+كل مفتاح هنا هو slug تصنيف. داخله items للمنتجات وerror لرسالة فشل ذلك التصنيف إن وجدت.
 
-useState(true) تنشئ حالة التحميل. loading تبدأ true، وsetLoading ستغيرها إلى false عندما تنتهي مجموعة الطلبات. تعرض Home شكل التحميل أو أقسام المنتجات بناءً على هذه القيمة.
+## useEffect وتجهيز الإلغاء
 
-## useEffect وجلب المنتجات
-
-~~~jsx
+~~~
 useEffect(() => {
-  const fetchProducts = async () => {
+  const controller = new AbortController();
+  const { signal } = controller;
+~~~
+
+useEffect تشغّل callback بعد render. نضع جلب الشبكة فيها لأنه عمل جانبي. AbortController ينشئ أداة لإلغاء طلبات fetch، وsignal هي الإشارة التي نمررها لكل طلب حتى يعرف المتصفح أنه تابع لهذا المتحكم.
+
+## جلب القائمة ثم المنتجات
+
+~~~
+  async function load() {
     try {
+      const categoriesRes = await fetch(
+        "https://dummyjson.com/products/categories",
+        { signal },
+      );
+
+      if (!categoriesRes.ok) {
+        throw new Error("Failed to load categories");
+      }
+
+      const list = await categoriesRes.json();
+
+      if (!Array.isArray(list)) {
+        throw new Error("Invalid categories data");
+      }
+
+      setCategories(list);
+
       const results = await Promise.all(
-        categories.map(async (category) => {
-          try {
-            const res = await fetch(
-              "https://dummyjson.com/products/category/" + category,
-            );
-
-            if (!res.ok) {
-              throw new Error("فشل تحميل تصنيف " + category);
-            }
-
-            const data = await res.json();
-
-            return [
-              category,
-              {
-                items: Array.isArray(data.products) ? data.products : [],
-                error: "",
-              },
-            ];
-          } catch {
-            return [
-              category,
-              {
-                items: [],
-                error: "تعذر تحميل منتجات هذا التصنيف.",
-              },
-            ];
-          }
+        list.map(async ({ slug }) => {
+          // طلب منتجات كل تصنيف
         }),
       );
 
       setProducts(Object.fromEntries(results));
+    } catch (loadError) {
+      if (loadError.name !== "AbortError") {
+        setError("تعذر تحميل التصنيفات. تحقق من اتصال الإنترنت.");
+      }
     } finally {
-      setLoading(false);
+      if (!signal.aborted) {
+        setLoading(false);
+      }
     }
-  };
+  }
+~~~
 
-  fetchProducts();
+- async تسمح باستخدام await داخل load. لا نجعل callback الخاصة بـuseEffect نفسها async؛ لأن React تتوقع منها لا شيء أو دالة تنظيف، بينما async ترجع Promise.
+- fetch الأولى تجلب قائمة التصنيفات من نقطة DummyJSON. تمرير signal يسمح بإلغائها.
+- res.ok تفحص نجاح حالة HTTP. fetch لا تعتبر كل رد HTTP مثل 404 أو 500 خطأً مرفوضًا تلقائيًا، لذلك يفحص الكود هذه الخاصية ويرمي Error عند الفشل.
+- res.json تقرأ جسم الاستجابة وتحوله إلى JavaScript.
+- Array.isArray تتأكد أن القائمة مصفوفة قبل المرور عليها.
+- setCategories(list) تحفظ القائمة فورًا قبل طلبات المنتجات. في render التالي تكون التصنيفات موجودة، وloading ما زالت true، فينشئ JSX هيكل تحميل لكل تصنيف أثناء انتظار المنتجات.
+- Promise.all تنتظر مجموعة الطلبات التي تنتجها map. الطلبات تبدأ بالتوازي، لكن المنتجات لا تُحفظ للعرض النهائي إلا بعد اكتمال أبطأ طلب.
+- Object.fromEntries تحول أزواج النتائج إلى كائن مفاتيحه slugs. setProducts تحفظ هذا الكائن في state وتطلب من React إعادة العرض.
+- catch الخارجية تعالج فشل جلب القائمة أو أخطاء أخرى وصلت إلى هذا المستوى. عند فشل القائمة تحفظ error الرسالة «تعذر تحميل التصنيفات. تحقق من اتصال الإنترنت.».
+- AbortError يُستثنى من رسالة الخطأ؛ الإلغاء عند مغادرة الصفحة ليس خطأً ينبغي عرضه للمستخدم.
+- finally تعمل بعد النجاح أو الفشل. إذا لم يُلغَ الطلب، تجعل setLoading قيمة loading هي false حتى تنتقل الواجهة إلى فرع الخطأ أو الأقسام.
+
+## طلب منتجات كل تصنيف وعزل الفشل
+
+~~~jsx
+list.map(async ({ slug }) => {
+  try {
+    const res = await fetch(
+      `https://dummyjson.com/products/category/${encodeURIComponent(slug)}`,
+      { signal },
+    );
+
+    if (!res.ok) {
+      throw new Error("Failed to load products");
+    }
+
+    const data = await res.json();
+
+    return [
+      slug,
+      {
+        items: Array.isArray(data.products) ? data.products : [],
+        error: "",
+      },
+    ];
+  } catch (requestError) {
+    if (requestError.name === "AbortError") {
+      throw requestError;
+    }
+
+    return [
+      slug,
+      {
+        items: [],
+        error: "تعذر تحميل منتجات هذا التصنيف.",
+      },
+    ];
+  }
+})
+~~~
+
+- map تمر على كل عنصر في قائمة التصنيفات، وتفك slug من العنصر الحالي.
+- encodeURIComponent ترمز قيمة slug لتناسب وضعها داخل عنوان URL.
+- لكل تصنيف try/catch خاصة به. نجاح HTTP وقراءة JSON يرجعان زوجًا: slug ثم كائن فيه items وerror فارغة.
+- Array.isArray تضمن أن items مصفوفة؛ وإذا لم تكن data.products مصفوفة، يستخدم الكود [] كقيمة آمنة.
+- فشل HTTP أو الشبكة أو قراءة JSON يدخل catch الخاص بهذا التصنيف. تعيد catch نتيجة عادية فيها قائمة فارغة ورسالة الخطأ، لذلك لا يُسقط فشل تصنيف واحد نتائج بقية التصنيفات.
+- إذا كان الخطأ AbortError، يعيد الكود رميه كي يصل إلى catch الخارجية وتتوقف المعالجة عند إلغاء الصفحة بدل تسجيله كفشل تصنيف.
+- Promise.all تحافظ على ترتيب نتائج map. وبعدها يحولها Object.fromEntries إلى كائن يسهل الوصول إلى نتيجة كل تصنيف عبر slug.
+
+## التنظيف عند مغادرة الصفحة
+
+~~~
+  load();
+
+  return () => controller.abort();
 }, []);
 ~~~
 
-useEffect تشغّل callback بعد render. جلب الشبكة عمل خارج رسم الواجهة، لذلك يوضع في effect.
+- load() يبدأ طلب القائمة ثم طلبات المنتجات.
+- دالة التنظيف تستدعي controller.abort() عند إزالة Home. كل fetch مررنا لها signal نفسه؛ لذلك تُلغى طلبات القائمة والمنتجات التابعة له.
+- [] هي قائمة الاعتماديات الفارغة؛ effect تعمل عند تركيب Home ولا يعاد تشغيلها بسبب تحديث الحالات داخل المكوّن.
 
-fetchProducts دالة async معرفة داخل effect. async تسمح باستخدام await. لا نجعل callback الخاصة بـuseEffect نفسها async؛ React تتوقع منها لا شيء أو دالة تنظيف، أما async فترجع Promise.
+## حالات العرض في JSX
 
-### تكرار الطلبات وجمعها
-
-categories.map تمر على كل قيمة. category هي اسم التصنيف في الدورة الحالية. لأن callback async، كل مرة تنتج Promise. بالتالي map تنتج قائمة من الوعود، واحد لكل تصنيف.
-
-Promise.all تنتظر اكتمال كل الوعود ثم تعيد مصفوفة النتائج بترتيب القائمة. تبدأ الطلبات بالتوازي، وهذا غالبًا أسرع من إرسال طلب ثم انتظار نتيجته قبل إرسال التالي. await توقف تنفيذ fetchProducts عند هذا السطر إلى أن تنتهي المجموعة، لكنها لا تجمد المتصفح.
-
-هناك حد مهم: Home لا تعرض النتائج فور انتهاء كل تصنيف على حدة؛ تنتظر Promise.all أبطأ طلب، فتبقى هياكل التحميل لكل الأقسام حتى تنتهي المجموعة.
-
-### طلب HTTP وفحص الاستجابة
-
-~~~jsx
-const res = await fetch(
-  "https://dummyjson.com/products/category/" + category,
-);
+~~~
+{loading ? (
+  categories.map((category) => (
+    <SlideProductLoading key={category.slug} />
+  ))
+) : error ? (
+  <p className="py-10! text-center text-red-500!">{error}</p>
+) : (
+  categories.map(({ slug, name }) => (
+    <SlideProduct
+      key={slug}
+      data={products[slug]?.items ?? []}
+      error={products[slug]?.error}
+      title={name}
+    />
+  ))
+)}
 ~~~
 
-fetch ترسل طلب HTTP. هنا نكوّن الرابط بإلحاق اسم التصنيف. res تمثل استجابة HTTP ولا تحتوي بعد على كائن المنتجات بصيغة JavaScript. await ينتظر وصولها.
+هذا تعبير شرطي متداخل يختار حالة واحدة:
 
-~~~jsx
-if (!res.ok) {
-  throw new Error("فشل تحميل تصنيف " + category);
-}
-~~~
+1. **Loading:** إذا loading تساوي true، ينشئ SlideProductLoading لكل تصنيف جرى حفظه في categories. لذلك تُعرض الهياكل بعد وصول قائمة التصنيفات وأثناء جلب المنتجات. المستخدم لم يؤكد بصريًا ظهورها في الاختبار.
+2. **خطأ القائمة:** إذا انتهى التحميل وكانت error غير فارغة، يعرض رسالة فشل القائمة. هذا الخطأ يختلف عن فشل طلب تصنيف واحد لأن Home لا تملك قائمة يمكنها بناء الأقسام منها.
+3. **نجاح القائمة:** إذا لم يوجد تحميل أو خطأ عام، يمر على التصنيفات بالترتيب القادم من API، ويفك slug وname. يمرر slug كمفتاح React، والمنتجات ورسالة القسم إلى SlideProduct، ويعرض name كعنوان.
 
-res.ok تشير إلى نجاح حالة HTTP. ! تعني نفي القيمة، فيدخل الشرط عند فشل الاستجابة. fetch لا ترفض تلقائيًا لكل ردود HTTP الفاشلة مثل 404 أو 500، لذلك نفحص ok بأنفسنا.
+في data، التعبير products[slug]?.items يقرأ منتجات التصنيف بأمان. Optional chaining تمنع خطأ الوصول إذا كانت نتيجة التصنيف غير موجودة، و?? [] تستخدم مصفوفة فارغة إذا كانت القيمة null أو undefined. error={products[slug]?.error} يمرر رسالة هذا التصنيف فقط. أما title={name} فيستخدم الاسم الذي أعاده API بدل تكوين عنوان من slug.
 
-throw يرمي خطأ فينتقل التنفيذ إلى catch الداخلية الخاصة بهذا التصنيف. الرسالة فيها اسم التصنيف، لكن catch الحالية تعرض رسالة عامة للمستخدم ولا تستخدم نص الخطأ.
+## نقاط مهمة عن السلوك الحالي
 
-~~~jsx
-const data = await res.json();
-~~~
+- الصفحة تجلب قائمة التصنيفات أولًا، ثم تبدأ طلب منتجات لكل تصنيف.
+- setCategories تسبق Promise.all، وهذا يتيح للواجهة إنشاء هيكل تحميل لكل تصنيف أثناء طلب المنتجات؛ لم يتأكد المستخدم من شكلها بصريًا.
+- فشل القائمة يعرض رسالة عامة للصفحة. فشل منتج تصنيف منفرد يعرض رسالة ذلك القسم وتبقى الأقسام الأخرى سليمة.
+- توجد catch خارجية فعلًا حول مسار load، إضافة إلى catch منفصلة داخل كل طلب تصنيف.
+- إذا نجح الطلب لكن data.products ليست مصفوفة، تصبح items فارغة وerror تظل فارغة، لذلك قد يظهر القسم فارغًا.
+- Promise.all تعني أن ظهور المنتجات ينتظر أبطأ طلب. هذا التأخير ما زال مفتوحًا ضمن البند 14.
+- الصفحة الرئيسية والهيدر يطلبان قائمة التصنيفات كلٌ على حدة؛ توحّد مصدر البيانات لكن لا تشارك نتيجة الطلب بين المكوّنين.
+- تعليقات المطور داخل JSX في نهاية الملف لا تؤثر على التنفيذ.
+- export default Home يصدر المكوّن ليستخدمه نظام الصفحات والمسارات.
 
-res.json تقرأ جسم الاستجابة بصيغة JSON وتحوله إلى كائن JavaScript. العملية غير متزامنة، لذا نستخدم await. شكل الاستجابة يتضمن عادةً products كمصفوفة، وربما حقولًا أخرى مثل total.
+## ماذا يحدث لو حذفنا أو غيّرنا أجزاء من Home
 
-~~~jsx
-return [
-  category,
-  {
-    items: Array.isArray(data.products) ? data.products : [],
-    error: "",
-  },
-];
-~~~
+- **حذف AbortController ودالة التنظيف:** عند مغادرة الصفحة، تظل الطلبات الجارية تعمل حتى تنتهي أو تفشل، رغم أن Home لم تعد معروضة. هذا يهدر طلبات الشبكة، كما لن يكون هناك إلغاء لطلبات التشغيل الأول عند إعادة effects في StrictMode أثناء التطوير.
+- **حذف encodeURIComponent:** slugs الحالية تعمل عادةً من دونه لأنها نصوص URL بسيطة، لكن قيمة slug تحتوي مسافة أو رموزًا خاصة قد تكوّن رابطًا غير صحيح. ترميزها يجعل إدراجها داخل مسار URL آمنًا.
+- **نقل setCategories(list) إلى ما بعد Promise.all:** تظل categories فارغة أثناء جلب منتجات التصنيفات، لذلك لا تملك واجهة Loading تصنيفات تمر عليها لإنشاء SlideProductLoading. ستظهر الأقسام بعد انتهاء طلبات المنتجات بدل ظهور هياكل التحميل خلالها.
+- **حذف try/catch الداخلية لكل تصنيف:** فشل طلب واحد يرفض Promise الخاصة به، فترفض Promise.all المجموعة ويصل الخطأ إلى catch الخارجية. عندها تظهر رسالة فشل القائمة بدل الأقسام، حتى لو نجحت طلبات تصنيفات أخرى؛ وتضيع فائدة عزل فشل القسم.
+- **حذف catch الخارجية:** فشل طلب قائمة التصنيفات أو خطأ آخر يصل للمستوى الخارجي لن يحفظ رسالة error للمستخدم، وقد ينتج رفض Promise غير معالج. وجود finally وحده يوقف loading، لكنه لا يعرض رسالة الخطأ.
 
-عند النجاح نرجع زوجًا: اسم التصنيف ثم بياناته. هذا الشكل يقبله Object.fromEntries.
+### StrictMode أثناء التطوير
 
-- Array.isArray تتحقق أن products مصفوفة.
-- العامل ? : يختار القيمة الأولى لو الشرط صحيح، وإلا القيمة الثانية.
-- items تستخدم المنتجات إذا كانت مصفوفة؛ وإلا [] حتى لا يفشل map في المكوّن اللاحق.
-- error فارغة لأن الطلب نجح.
-
-### معالجة فشل تصنيف منفرد
-
-~~~jsx
-} catch {
-  return [
-    category,
-    {
-      items: [],
-      error: "تعذر تحميل منتجات هذا التصنيف.",
-    },
-  ];
-}
-~~~
-
-catch تلتقط خطأ الشبكة، أو الخطأ الذي رميناه بسبب res.ok، أو خطأ قراءة JSON. لا نكتب متغيرًا لسبب الخطأ لأننا لا نستخدم تفاصيله.
-
-الفشل يرجع نتيجة عادية بدل Promise مرفوضة: التصنيف نفسه، مصفوفة فارغة، ورسالة للمستخدم. بذلك فشل fragrances لا يمنع جمع بيانات beauty أو furniture.
-
-### حفظ النتائج وإنهاء التحميل
-
-~~~jsx
-setProducts(Object.fromEntries(results));
-~~~
-
-قبل هذا السطر results مصفوفة أزواج، مثل:
-
-~~~js
-[
-  ["beauty", { items: [/* منتجات */], error: "" }],
-  ["fragrances", { items: [], error: "تعذر تحميل منتجات هذا التصنيف." }]
-]
-~~~
-
-Object.fromEntries تحول كل زوج [key, value] إلى خاصية في كائن. setProducts تحفظ الكائن في state وتطلب render جديدًا.
-
-finally تعمل بعد try سواء اكتملت بنجاح أو وقع خطأ. setLoading(false) تعلن انتهاء التحميل.
-
-fetchProducts() تستدعي الدالة وتبدأها؛ تعريفها وحده لا يرسل الطلبات.
-
-[] قائمة الاعتماديات الفارغة تعني أن effect لا تعتمد على قيم متغيرة في Home؛ تعمل عند تركيب المكوّن ولا يعاد جلب البيانات بسبب كل تحديث state.
-
-ملاحظات على السلوك الحالي:
-
-- catches الداخلية تعالج الأخطاء المعتادة لكل طلب. لا توجد catch خارجية بعد try/finally، لذلك خطأ غير متوقع في التجميع قد يسبب رفض Promise الخارجية من دون رسالة واجهة، مع أن finally تنهي loading.
-- لو نجح HTTP وقراءة JSON لكن products ليست مصفوفة، items تصبح [] وerror تبقى فارغة؛ قد يظهر القسم فارغًا بدل رسالة.
-- Promise.all لا تعرض التصنيفات بالتدريج؛ تنتظر كل الطلبات، ومنها الأبطأ.
-
-## JSX في Home وProps
-
-~~~jsx
-return (
-  <PageTransition>
-    <div>
-      <HeroSlider />
-
-      {loading
-        ? categories.map((category) => <SlideProductLoading key={category} />)
-        : categories.map((category) => (
-            <SlideProduct
-              key={category}
-              data={products[category]?.items ?? []}
-              error={products[category]?.error}
-              title={category.replace("-", " ")}
-            />
-          ))}
-    </div>
-  </PageTransition>
-);
-~~~
-
-PageTransition يلف محتوى الصفحة. كل ما بين وسمَيه يصل إليه تلقائيًا في prop اسمها children.
-
-HeroSlider يظهر أعلى الصفحة ولا يستقبل Props في الاستخدام الحالي.
-
-loading ? ... : ... شرط ثلاثي:
-
-- إذا loading صحيحة، map تنشئ SlideProductLoading لكل تصنيف.
-- إذا انتهى التحميل، map تنشئ SlideProduct لكل تصنيف.
-- key={category} مفتاح ثابت يساعد React على مطابقة عناصر القائمة في عمليات render اللاحقة.
-
-Props إلى SlideProduct:
-
-- data={products[category]?.items ?? []}: يقرأ items للتصنيف. ?. تسمى optional chaining؛ إذا لم يوجد كائن التصنيف، لا يرمي الكود خطأ عند قراءة items. ?? تستخدم [] إذا القيمة null أو undefined.
-- error={products[category]?.error}: تمرر رسالة الفشل أو undefined.
-- title={category.replace("-", " ")}: replace تستبدل أول شرطة بمسافة. مثل home-decoration تصبح home decoration.
-
-تعليقات JSX أو التعليق متعدد الأسطر في نهاية الملف توضيحات للمطور ولا تنفذ. export default Home يصدر المكوّن لنظام التوجيه أو لمكوّن آخر.
+في وضع التطوير، React StrictMode قد يشغّل effect بهذا التسلسل: تشغيل، ثم cleanup، ثم تشغيل مرة ثانية. كل تشغيل ينشئ AbortController جديدًا؛ الـcleanup يلغي طلبات التشغيل الأول. أخطاء AbortError يعاد رميها من catch الداخلية، ثم تتجاهلها catch الخارجية، وfinally لا تغيّر loading إذا كانت signal ملغاة. التشغيل الثاني له signal جديد ويكمل طلباته بشكل طبيعي. هذا السلوك المقصود يساعد على كشف آثار جانبية لا تنظف نفسها؛ وهو خاص بفحوص التطوير، وليس تشغيلًا مزدوجًا معتادًا في production.
 
 # 2. HeroSlider.jsx
 
@@ -534,7 +490,7 @@ function SlideProductLoading() {
 
 بقية عناصر البطاقة الفارغة تمثل مساحات الشارة والأيقونة والصورة والعنوان والتقييم والسعر ومعلومة نصية والأزرار. h-56 مثلًا يحجز ارتفاع مكان الصورة. هذه العناصر شكلية فقط وليست منتجًا أو أزرارًا وظيفية.
 
-export default SlideProductLoading يصدر المكوّن. Home تنشئ نسخة لكل تصنيف أثناء loading: 24 نسخة، وكل نسخة فيها بطاقة Skeleton واحدة.
+export default SlideProductLoading يصدر المكوّن. Home تنشئ نسخة لكل عنصر في قائمة التصنيفات التي رجعت من API أثناء loading؛ العدد يتبع القائمة الحالية وليس رقمًا ثابتًا. كل نسخة تعرض بطاقة Skeleton واحدة.
 
 # 5. PageTransition.jsx
 
@@ -576,15 +532,17 @@ Props قيم يمررها المكوّن الأب إلى الابن.
 | Home | HeroSlider | لا يوجد هنا | بيانات الشرائح داخله |
 | Home | SlideProductLoading | لا يوجد | هيكل تحميل ثابت |
 | Home | SlideProduct | data | مصفوفة منتجات تصنيف |
-| Home | SlideProduct | title | عنوان القسم |
+| Home | SlideProduct | title | اسم التصنيف القادم من name في API |
 | Home | SlideProduct | error | رسالة الفشل أو قيمة فارغة |
 | SlideProduct | Product | item | كائن منتج منفرد |
 
 ~~~text
 DummyJSON
-  ↓ طلب لكل تصنيف
-Home state: البيانات ورسالة التصنيف
-  ↓ Props: data, title, error
+  ↓ طلب قائمة التصنيفات
+Home state: categories, loading, error
+  ↓ طلب منتجات لكل slug
+Home state: products مفهرسة بالـslug
+  ↓ Props: data, title من name, error
 SlideProduct
   ↓ map لكل منتج
 Product: item واحد
@@ -592,16 +550,16 @@ Product: item واحد
 
 # رحلة التحميل من فتح الصفحة حتى ظهور المنتجات
 
-1. React تستدعي Home. products كائن فارغ وloading=true.
-2. يظهر HeroSlider، وتظهر 24 نسخة SlideProductLoading.
-3. بعد render، useEffect تشغل fetchProducts.
-4. يبدأ طلب لكل تصنيف بالتوازي.
-5. عند النجاح: يفحص الكود res.ok، يقرأ JSON، ويتأكد أن products مصفوفة، ثم يخزنها في items ويجعل error فارغة.
-6. عند فشل طلب: catch الخاصة بهذا التصنيف تعيد items فارغة ورسالة الخطأ.
-7. Promise.all تنتظر جميع النتائج، وObject.fromEntries تحولها إلى كائن مفهرس باسم التصنيف.
-8. setProducts تخزن النتيجة وfinally تجعل loading=false.
-9. React تعيد العرض: تختفي هياكل التحميل وتظهر أقسام SlideProduct.
-10. التصنيف الناجح يعرض Swiper، والتصنيف الفاشل يعرض عنوانه ورسالة الخطأ بدل Swiper.
+1. React تستدعي Home. categories وproducts فارغتان، loading=true، وerror نص فارغ. يظهر HeroSlider، ولا يظهر Skeleton بعد لأن قائمة categories لم تصل بعد.
+2. useEffect تنشئ AbortController ودالة التنظيف، ثم تبدأ load.
+3. يطلب load قائمة التصنيفات من DummyJSON، ويفحص res.ok وأن JSON الناتج مصفوفة.
+4. عند نجاح القائمة، setCategories تحفظها قبل جلب المنتجات. في العرض التالي تظهر SlideProductLoading لكل slug بينما loading ما زالت true.
+5. يبدأ طلب منتجات لكل slug بالتوازي. encodeURIComponent ترمز slug داخل الرابط، وكل الطلبات تستخدم signal نفسه.
+6. إذا نجح طلب تصنيف، تُحفظ منتجاته في نتيجة مؤقتة وerror تكون فارغة. إذا فشل، تعيد catch الخاصة به items فارغة ورسالة هذا التصنيف؛ لذلك لا يمنع الفشل بقية النتائج.
+7. Promise.all تنتظر كل النتائج، ثم Object.fromEntries تحول أزواجها إلى كائن مفهرس بـslug، ويحفظه setProducts.
+8. finally تجعل loading=false إذا لم تكن الطلبات أُلغيت. عندها تعرض Home أقسام SlideProduct بالترتيب الذي رجع من API؛ القسم الفاشل يعرض عنوانه ورسالة الخطأ، والناجح يعرض Swiper.
+9. إذا فشل طلب قائمة التصنيفات أو كانت البيانات ليست مصفوفة، تحفظ catch الخارجية رسالة القائمة. بعد انتهاء التحميل تظهر الرسالة العامة بدل الأقسام.
+10. عند مغادرة الصفحة، تستدعي دالة التنظيف controller.abort(). الإلغاء لا يُعرض كخطأ للمستخدم ولا يحدّث حالة التحميل بعد الإزالة.
 
 مثال نتيجة furniture الناجحة:
 
@@ -649,10 +607,13 @@ products.fragrances = {
 - key: معرف يساعد React على تتبع عناصر القوائم.
 - Optional chaining (?.): قراءة خاصية بأمان إذا كان الكائن قد يكون غائبًا.
 - Nullish coalescing (??): استخدام بديل عند null أو undefined.
+- AbortController: كائن ينشئ signal يمكن تمريره إلى fetch لإلغاء الطلب.
+- AbortSignal / signal: الإشارة التي تربط طلب fetch بمتحكم الإلغاء.
+- encodeURIComponent: دالة ترمز قيمة لتكون آمنة داخل جزء من عنوان URL.
 - Swiper: مكتبة للشرائح والتنقل.
 - Skeleton/Placeholder: شكل مؤقت لمكان محتوى لم يصل بعد.
 - Breakpoint: حد عرض تتغير عنده إعدادات العرض.
 
 ## الخلاصة
 
-Home تدير بيانات API وحالة التحميل وتنسق المكونات. HeroSlider يعرض محتوى دعائيًا. SlideProductLoading يظهر أثناء الانتظار. SlideProduct يعرض تصنيفًا ورسالة خطئه أو منتجاته. Product يعرض عنصرًا منفردًا. PageTransition يضيف الحركة حول الصفحة. تبدأ رحلة البيانات من API، تمر إلى state في Home، تنتقل عبر Props إلى SlideProduct، ثم يصل كل منتج إلى Product.
+Home تجلب قائمة التصنيفات ثم منتجاتها، وتدير حالات categories وproducts وloading وerror. HeroSlider يعرض محتوى دعائيًا. SlideProductLoading يظهر بعد وصول القائمة وأثناء تحميل المنتجات. SlideProduct يعرض تصنيفًا ورسالة خطئه أو منتجاته، وProduct يعرض عنصرًا منفردًا. PageTransition يضيف الحركة حول الصفحة. تنتقل قائمة التصنيفات والمنتجات إلى JSX في Home، ثم تمر بيانات كل قسم عبر Props إلى SlideProduct، وبعدها يصل كل منتج إلى Product.

@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Link } from "react-router-dom";
 import TopHeader from "./conponents/header/TopHeader";
 import BtmHeader from "./conponents/header/BtmHeader";
 import Home from "./page/Home/Home";
@@ -18,11 +18,44 @@ import Contact from "./page/Contact/Contact";
 import SignIn from "./page/Auth/SignIn";
 import Register from "./page/Auth/Register";
 import Checkout from "./page/Checkout/Checkout";
+import { useLayoutEffect, useRef } from "react";
+
+function NotFound() {
+  return (
+    <section className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4 text-center">
+      <h1 className="text-3xl font-bold text-main">الصفحة مش موجودة</h1>
+      <p>العنوان اللي فتحته مش تابع لأي صفحة في المتجر.</p>
+      <Link to="/" className="rounded bg-main px-5! py-2! text-white!">
+        ارجع للصفحة الرئيسية
+      </Link>
+    </section>
+  );
+}
 
 function App() {
+
+  const headerRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      document.documentElement.style.setProperty(
+        "--site-header-height",
+        `${entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height}px`,
+      );
+    });
+
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
   return (
     <>
-      <header className="fixed top-0 left-0 w-full z-50 bg-white shadow-sm">
+      <header
+        ref={headerRef}
+        className="fixed top-0 left-0 w-full z-50 bg-white shadow-sm"
+      >
         <TopHeader />
         <BtmHeader />
       </header>
@@ -38,7 +71,7 @@ function App() {
         }}
       />
       <ScrollToTop />
-      <main className="pt-43.5! lg:pt-[126.6px]!">
+      <main style={{ paddingTop: "var(--site-header-height, 0px)" }}>
         <AnimatePresence mode="wait">
           <Routes>
             <Route path="/" element={<Home />} />
@@ -55,6 +88,7 @@ function App() {
             <Route path="/signin" element={<SignIn />} />
             <Route path="/register" element={<Register />} />
             <Route path="/checkout" element={<Checkout />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </AnimatePresence>
       </main>

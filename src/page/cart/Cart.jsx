@@ -1,7 +1,7 @@
 import { useContext } from "react";
 import { FaTrashAlt } from "react-icons/fa";
 
-import { CartContext } from "../../conponents/context/CartContext";
+import { CartContext } from "../../conponents/context/CartContextValue";
 
 import { Link, useNavigate } from "react-router-dom";
 import PageTransition from "../../conponents/PageTransition";
@@ -9,8 +9,6 @@ import PageTransition from "../../conponents/PageTransition";
 function Cart() {
   const { cartItems, increaseQuantity, decreaseQuantity, removeItem } =
     useContext(CartContext);
-
-  console.log(cartItems);
 
   const total = cartItems
     .reduce((acc, item) => acc + item.price * item.quantity, 0)
@@ -52,18 +50,18 @@ function Cart() {
                 return (
                   // item_cart
                   <div
-                    className="item_cart flex items-center justify-between gap-5 h-31.25 border-b border-border pr-5! last:border-b-0"
+                    className="item_cart flex items-center justify-between gap-3 sm:gap-5 min-h-31.25 h-auto sm:h-31.25 border-b border-border py-3! px-2! sm:py-0! sm:pr-5! sm:pl-0! last:border-b-0"
                     key={index}
                   >
                     {/* image Name */}
-                    <div className=" flex items-center gap-5">
+                    <div className=" flex min-w-0 items-center gap-3 sm:gap-5">
                       <img
-                        className="w-20! h-20! object-contain flex items-center justify-center"
+                        className="w-20! h-20! shrink-0  object-contain "
                         src={item.images[0]}
                         alt={item.title}
                       />
 
-                      <div className="content">
+                      <div className="content min-w-0">
                         <h4 className="text-sm font-bold mb-2.5! overflow-auto line-clamp-1">
                           {item.title}
                         </h4>

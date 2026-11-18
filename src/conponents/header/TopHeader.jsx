@@ -1,7 +1,7 @@
 import { useContext } from "react";
 
 import { Link } from "react-router-dom";
-import { CartContext } from "../../conponents/context/CartContext";
+import { CartContext } from "../../conponents/context/CartContextValue";
 
 import { FaRegHeart } from "react-icons/fa";
 import { FaCartArrowDown } from "react-icons/fa6";

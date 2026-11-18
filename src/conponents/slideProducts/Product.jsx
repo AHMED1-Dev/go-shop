@@ -8,7 +8,7 @@ import {
 } from "react-icons/fa6";
 import { FaCartArrowDown, FaRegHeart } from "react-icons/fa";
 import { Link } from "react-router-dom";
-import { CartContext } from "../../conponents/context/CartContext";
+import { CartContext } from "../../conponents/context/CartContextValue";
 
 import { toast } from "react-hot-toast";
 
@@ -156,17 +156,19 @@ function Product({ item }) {
         </p>
       </Link>
 
-      <div
-        onClick={() => !isItemInCart && handleAddToCart()}
-        className={`flex items-center justify-center gap-2.5 p-2.5! mt-1.5! bg-main rounded-2xl transition-transform duration-300 ${
-          isItemInCart ? "pointer-events-none opacity-70" : "hover:scale-105"
+      <button
+        type="button"
+        onClick={handleAddToCart}
+        disabled={isItemInCart}
+        className={`flex w-full items-center justify-center gap-2.5 p-2.5! mt-1.5! bg-main rounded-2xl transition-transform duration-300 ${
+          isItemInCart ? "opacity-70" : "cursor-pointer hover:scale-105"
         }`}
       >
-        <span className="text-2xl text-white!">
+        <span className="text-2xl text-white!" aria-hidden="true">
           <FaCartArrowDown />
         </span>
-        <button className="text-1xl text-white!"> Add to Cart</button>
-      </div>
+        <span className="text-1xl text-white!"> Add to Cart</span>
+      </button>
     </section>
   );
 }
