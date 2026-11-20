@@ -16,10 +16,8 @@ function Contact() {
     { name: "", email: "", subject: "", message: "" },
     rules,
   );
-  // console.log(values);
 
-  const onSend = (data) => {
-    console.log("Message (no backend yet):", data);
+  const onSend = () => {
     toast.success("This is a demo form. Message sending is not available yet.");
     reset();
   };

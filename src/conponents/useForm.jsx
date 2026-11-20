@@ -41,10 +41,8 @@ export function useForm(initialValues, rules) {
     // مرة واحدة state ومينفعش نعدّل فيها مباشرة. فبنجمّع في متغير عادي، وفي الآخر ندخله الـ state الموجودة؟ لأنها errors فاضي، هنحط فيه الأخطاء اللي نلاقيها. ليه مش بنستخدم object بنعمل
 
     Object.keys(rules).forEach((field) => {
-      console.log("بنفحص الحقل:", field);
       for (const rule of rules[field]) {
         const message = rule(values[field], values);
-        console.log("   قاعدة رجّعت:", message === "" ? "(سليم)" : message);
         if (message) {
           newErrors[field] = message;
           break;

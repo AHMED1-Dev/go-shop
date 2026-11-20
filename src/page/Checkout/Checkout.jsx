@@ -28,14 +28,11 @@ function Checkout() {
   const shipping = subtotal > 0 ? 5 : 0;
   const total = (subtotal + shipping).toFixed(2);
 
-  const onPlaceOrder = (data) => {
+  const onPlaceOrder = () => {
+    // يتم إنشاء رقم الطلب عند إرسال النموذج فقط.
+    // eslint-disable-next-line react-hooks/purity
     const number = `GS-${Date.now().toString().slice(-8)}`;
-    console.log("Order (no backend yet):", {
-      number,
-      customer: data,
-      items: cartItems,
-      total,
-    });
+
     setOrderNumber(number);
     clearCart();
   };
