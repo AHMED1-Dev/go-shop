@@ -1,12 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 function ProductImages({ product }) {
   const [selectedImage, setSelectedImage] = useState(product.images[0]);
-
-  // لما المنتج نفسه يتغير، ارجع للصورة الأولى للمنتج الجديد
-  useEffect(() => {
-    setSelectedImage(product.images[0]);
-  }, [product.id]);
 
   return (
     <div className="w-full lg:w-[48%] flex gap-2 sm:gap-3">
